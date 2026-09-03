@@ -13,11 +13,15 @@ struct MainView: View {
     @State private var isScanning = false
     @State private var isAnalyzing = false
     @State private var analysisResult: AnalysisResult?
+    @State private var aiAnalysis: String?
+    @State private var isAIAnalyzing = false
+    @State private var aiError: String?
     @State private var errorMessage: String?
 
     private let securityAccess = SecurityScopedAccess()
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
+    private let modelSession = OrderlyModelSession()
 
     var body: some View {
 
@@ -109,6 +113,26 @@ struct MainView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
+            if isAIAnalyzing {
+
+                ProgressView(
+                    "Orderly is understanding your files..."
+                )
+            }
+
+            if let aiAnalysis {
+
+                AIAnalysisView(
+                    result: aiAnalysis
+                )
+            }
+
+            if let aiError {
+
+                Text(aiError)
+                    .foregroundStyle(.red)
+            }
+
             if !files.isEmpty {
 
                 List(files) { file in
@@ -176,6 +200,9 @@ struct MainView: View {
         errorMessage = nil
         files = []
         analysisResult = nil
+        aiAnalysis = nil
+        aiError = nil
+        isAIAnalyzing = false
 
         guard securityAccess.startAccessing(url) else {
 
@@ -213,7 +240,7 @@ struct MainView: View {
 
                 let scannedFiles =
                     try await Task.detached {
-                        try FileSystemService().scanDirectory(
+                        try await FileSystemService().scanDirectory(
                             at: url
                         )
                     }.value
@@ -234,6 +261,29 @@ struct MainView: View {
 
                     analysisResult = result
                     isAnalyzing = false
+                    isAIAnalyzing = true
+                }
+
+                do {
+
+                    let response = try await modelSession.analyze(
+                        files: scannedFiles,
+                        analysis: result
+                    )
+
+                    await MainActor.run {
+
+                        aiAnalysis = response
+                        isAIAnalyzing = false
+                    }
+
+                } catch {
+
+                    await MainActor.run {
+
+                        aiError = error.localizedDescription
+                        isAIAnalyzing = false
+                    }
                 }
 
             } catch {

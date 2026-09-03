@@ -39,6 +39,14 @@ struct CleanupAction: Identifiable, Codable, Hashable, Sendable {
 
     var isSelected: Bool
 
+    var excludedFileIDs: [UUID]
+
+    var selectedFileIDs: [UUID] {
+        fileIDs.filter { fileID in
+            !excludedFileIDs.contains(fileID)
+        }
+    }
+
     init(
         id: UUID = UUID(),
         type: CleanupActionType,
@@ -48,7 +56,8 @@ struct CleanupAction: Identifiable, Codable, Hashable, Sendable {
         destination: URL? = nil,
         riskLevel: RiskLevel,
         confidence: Double,
-        isSelected: Bool = false
+        isSelected: Bool = false,
+        excludedFileIDs: [UUID] = []
     ) {
         self.id = id
         self.type = type
@@ -59,5 +68,6 @@ struct CleanupAction: Identifiable, Codable, Hashable, Sendable {
         self.riskLevel = riskLevel
         self.confidence = confidence
         self.isSelected = isSelected
+        self.excludedFileIDs = excludedFileIDs
     }
 }
