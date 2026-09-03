@@ -2,18 +2,52 @@
 //  ExecutionPlan.swift
 //  Orderly
 //
-//  ClutterBot Data Model v1 — user's approved subset of a CleanupPlan.
-//  Only selectedActionIDs are executed; unselected actions are never run.
+//  User-approved operations derived from a CleanupPlan.
 //
 
 import Foundation
 
-struct ExecutionPlan: Codable, Hashable, Sendable {
+struct ExecutionPlan: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
     let cleanupPlanID: UUID
-    let selectedActionIDs: [UUID]
+    let selectedActions: [ExecutionAction]
 
-    init(cleanupPlanID: UUID, selectedActionIDs: [UUID]) {
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        cleanupPlanID: UUID,
+        selectedActions: [ExecutionAction],
+        createdAt: Date = .now
+    ) {
+        self.id = id
         self.cleanupPlanID = cleanupPlanID
-        self.selectedActionIDs = selectedActionIDs
+        self.selectedActions = selectedActions
+        self.createdAt = createdAt
+    }
+}
+
+struct ExecutionAction: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
+    let sourceActionID: UUID
+    let type: CleanupActionType
+    let fileIDs: [UUID]
+    let destination: URL?
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        sourceActionID: UUID,
+        type: CleanupActionType,
+        fileIDs: [UUID],
+        destination: URL?,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.sourceActionID = sourceActionID
+        self.type = type
+        self.fileIDs = fileIDs
+        self.destination = destination
+        self.createdAt = createdAt
     }
 }
