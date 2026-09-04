@@ -14,38 +14,42 @@ struct CleanupPlanView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Cleanup Plan")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
 
-                    Text(plan.summary)
-                        .foregroundStyle(.secondary)
+                Text("Cleanup Plan")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
 
-                    Text(plan.folder.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(plan.summary)
+                    .foregroundStyle(.secondary)
 
-                ForEach($reviewedActions) { $action in
-                    CleanupActionRow(action: $action, files: files)
-                }
-
-                Divider()
-
-                HStack {
-                    Spacer()
-
-                    Button("Apply Selected") {
-                        createExecutionPlan()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                Text(plan.folder.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(24)
+
+            ForEach($reviewedActions) { $action in
+
+                CleanupActionRow(
+                    action: $action,
+                    files: files
+                )
+            }
+
+            Divider()
+
+            HStack {
+
+                Spacer()
+
+                Button("Apply Selected") {
+                    createExecutionPlan()
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
+        .padding(24)
     }
 
     private func createExecutionPlan() {
