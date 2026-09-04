@@ -7,11 +7,14 @@ final class CleanupPlanner {
     func createPlan(
         folder: URL,
         files: [FileMetadata],
-        analysis: AnalysisResult
+        analysis: AnalysisResult,
+        modelPlan: ModelCleanupPlan
     ) -> CleanupPlan {
+
         builder.buildPlan(
             folder: folder,
             candidates: analysis.candidates,
+            modelPlan: modelPlan,
             files: files
         )
     }

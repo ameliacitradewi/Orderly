@@ -13,7 +13,8 @@ struct MainView: View {
     @State private var isScanning = false
     @State private var isAnalyzing = false
     @State private var analysisResult: AnalysisResult?
-    @State private var aiAnalysis: String?
+    @State private var modelCleanupPlan: ModelCleanupPlan?
+    @State private var cleanupPlan: CleanupPlan?
     @State private var isAIAnalyzing = false
     @State private var aiError: String?
     @State private var errorMessage: String?
@@ -22,6 +23,7 @@ struct MainView: View {
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
     private let modelSession = OrderlyModelSession()
+    private let cleanupPlanner = CleanupPlanner()
 
     var body: some View {
 
@@ -120,10 +122,11 @@ struct MainView: View {
                 )
             }
 
-            if let aiAnalysis {
+            if let cleanupPlan {
 
-                AIAnalysisView(
-                    result: aiAnalysis
+                CleanupPlanView(
+                    plan: cleanupPlan,
+                    files: files
                 )
             }
 
@@ -200,7 +203,8 @@ struct MainView: View {
         errorMessage = nil
         files = []
         analysisResult = nil
-        aiAnalysis = nil
+        modelCleanupPlan = nil
+        cleanupPlan = nil
         aiError = nil
         isAIAnalyzing = false
 
@@ -256,6 +260,20 @@ struct MainView: View {
                     folder: url,
                     files: scannedFiles
                 )
+                
+                print("======== ANALYSIS ========")
+                print("Duplicate groups:", result.duplicateGroups.count)
+                print("Candidates:", result.candidates.count)
+
+                for candidate in result.candidates {
+                    print(
+                        "Candidate:",
+                        candidate.id,
+                        candidate.type.rawValue,
+                        candidate.fileIDs.count,
+                        candidate.confidence
+                    )
+                }
 
                 await MainActor.run {
 
@@ -266,14 +284,46 @@ struct MainView: View {
 
                 do {
 
-                    let response = try await modelSession.analyze(
-                        files: scannedFiles,
+                    let modelPlan = try await modelSession.analyze(
                         analysis: result
                     )
+                    
+                    print("======== MODEL PLAN ========")
+                    print("Summary:", modelPlan.summary)
+                    print("Recommendations:", modelPlan.recommendations.count)
+
+                    for recommendation in modelPlan.recommendations {
+                        print(
+                            "Recommendation:",
+                            recommendation.candidateID,
+                            recommendation.intent.rawValue,
+                            recommendation.title
+                        )
+                    }
+
+                    let plan = cleanupPlanner.createPlan(
+                        folder: url,
+                        files: scannedFiles,
+                        analysis: result,
+                        modelPlan: modelPlan
+                    )
+                    
+                    print("======== CLEANUP PLAN ========")
+                    print("Actions:", plan.actions.count)
+
+                    for action in plan.actions {
+                        print(
+                            "Action:",
+                            action.type.rawValue,
+                            action.title,
+                            action.fileIDs.count
+                        )
+                    }
 
                     await MainActor.run {
 
-                        aiAnalysis = response
+                        modelCleanupPlan = modelPlan
+                        cleanupPlan = plan
                         isAIAnalyzing = false
                     }
 
