@@ -5,71 +5,162 @@ struct CleanupPlanView: View {
     let plan: CleanupPlan
     let files: [FileMetadata]
 
-    @State private var reviewedActions: [CleanupAction]
+    @State private var selectedTab:
+        ReviewTab = .plan
 
-    init(plan: CleanupPlan, files: [FileMetadata]) {
+    @State private var reviewedActions:
+        [ReviewedCleanupAction]
+
+    init(
+        plan: CleanupPlan,
+        files: [FileMetadata]
+    ) {
+
         self.plan = plan
         self.files = files
-        _reviewedActions = State(initialValue: plan.actions)
+
+        _reviewedActions = State(
+            initialValue: plan.actions.map {
+                ReviewedCleanupAction(
+                    action: $0
+                )
+            }
+        )
     }
 
     var body: some View {
+
+        VStack(spacing: 0) {
+
+            VStack(spacing: 18) {
+
+                FolderSummaryHeader(
+                    folder: plan.folder,
+                    files: files
+                )
+
+                ReviewTabBar(
+                    selectedTab: $selectedTab
+                )
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+
+            switch selectedTab {
+            case .plan:
+                planContent
+
+            case .files:
+                FileDetailsView(
+                    files: files
+                )
+            }
+
+            BottomActionBar(
+                approvedCount: approvedActions.count,
+                reclaimableSize: approvedSize,
+                onExecute: {
+                    createExecutionPlan()
+                }
+            )
+        }
+    }
+
+    private var planContent: some View {
+
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Cleanup Plan")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
 
-                    Text(plan.summary)
-                        .foregroundStyle(.secondary)
+            LazyVStack(
+                alignment: .leading,
+                spacing: 12
+            ) {
 
-                    Text(plan.folder.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Label(
+                    "Orderly identified \(reviewedActions.count) actions. Approve or reject each one before continuing.",
+                    systemImage: "sparkles"
+                )
+                .font(.callout)
+                .foregroundStyle(
+                    OrderlyTheme.secondaryText
+                )
 
-                ForEach($reviewedActions) { $action in
-                    CleanupActionRow(action: $action, files: files)
-                }
+                ForEach(
+                    $reviewedActions
+                ) { $reviewedAction in
 
-                Divider()
-
-                HStack {
-                    Spacer()
-
-                    Button("Apply Selected") {
-                        createExecutionPlan()
-                    }
-                    .buttonStyle(.borderedProminent)
+                    CleanupActionRow(
+                        action: $reviewedAction.action,
+                        files: files,
+                        decision: $reviewedAction.decision
+                    )
                 }
             }
             .padding(24)
         }
     }
 
-    private func createExecutionPlan() {
-        let executionActions = reviewedActions.compactMap { action -> ExecutionAction? in
-            guard action.isSelected, !action.selectedFileIDs.isEmpty else {
-                return nil
-            }
+    private var approvedActions:
+        [ReviewedCleanupAction] {
 
-            return ExecutionAction(
-                sourceActionID: action.id,
-                type: action.type,
-                fileIDs: action.selectedFileIDs,
-                destination: action.destination,
-                createdAt: Date()
-            )
+        reviewedActions.filter {
+            $0.decision == .approved
         }
+    }
 
-        let executionPlan = ExecutionPlan(
-            cleanupPlanID: plan.id,
-            selectedActions: executionActions,
-            createdAt: Date()
+    private var approvedSize: Int64 {
+
+        let lookup = FileLookup(
+            files: files
         )
 
-        print("Orderly: ExecutionPlan created:")
+        return approvedActions
+            .flatMap {
+                lookup.files(
+                    withIDs: $0.action.selectedFileIDs
+                )
+            }
+            .reduce(0) {
+                $0 + $1.size
+            }
+    }
+
+    private func createExecutionPlan() {
+
+        let executionActions =
+            approvedActions.compactMap {
+                reviewedAction
+                -> ExecutionAction? in
+
+                let action =
+                    reviewedAction.action
+
+                guard !action
+                    .selectedFileIDs
+                    .isEmpty
+                else {
+                    return nil
+                }
+
+                return ExecutionAction(
+                    sourceActionID: action.id,
+                    type: action.type,
+                    fileIDs: action.selectedFileIDs,
+                    destination: action.destination,
+                    createdAt: Date()
+                )
+            }
+
+        let executionPlan =
+            ExecutionPlan(
+                cleanupPlanID: plan.id,
+                selectedActions: executionActions,
+                createdAt: Date()
+            )
+
+        print(
+            "Orderly: ExecutionPlan created:"
+        )
+
         print(executionPlan)
     }
 }

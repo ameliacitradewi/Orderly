@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct MainView: View {
 
@@ -13,7 +14,8 @@ struct MainView: View {
     @State private var isScanning = false
     @State private var isAnalyzing = false
     @State private var analysisResult: AnalysisResult?
-    @State private var aiAnalysis: String?
+    @State private var modelCleanupPlan: ModelCleanupPlan?
+    @State private var cleanupPlan: CleanupPlan?
     @State private var isAIAnalyzing = false
     @State private var aiError: String?
     @State private var errorMessage: String?
@@ -22,177 +24,155 @@ struct MainView: View {
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
     private let modelSession = OrderlyModelSession()
+    private let cleanupPlanner = CleanupPlanner()
 
     var body: some View {
 
-        VStack(spacing: 24) {
+        ZStack {
 
-            VStack(spacing: 8) {
+            OrderlyTheme.background
+                .ignoresSafeArea()
 
-                Text("Orderly")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
-                Text(
-                    selectedFolder?.path
-                    ?? "Choose a folder to organize"
-                )
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-
-            FolderPickerView { folderURL in
-                selectFolder(folderURL)
-            }
-
-            if isScanning {
-
-                ProgressView("Scanning...")
-                    .controlSize(.small)
-
-            } else if isAnalyzing {
-
-                ProgressView("Analyzing files...")
-                    .controlSize(.small)
-
-            } else if selectedFolder != nil {
-
-                Text(
-                    "\(files.count) files found"
-                )
-                .font(.headline)
-            }
-
-            if let result = analysisResult {
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    Text("Analysis")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Text(
-                        "\(result.totalFiles) files • " +
-                        ByteCountFormatter.string(
-                            fromByteCount: result.totalSize,
-                            countStyle: .file
-                        )
-                    )
-
-                    ForEach(result.fileTypes) { summary in
-
-                        HStack {
-
-                            Text(
-                                summary.type.rawValue.capitalized
-                            )
-
-                            Spacer()
-
-                            Text("\(summary.count)")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Divider()
-
-                    Text(
-                        "\(result.duplicateGroups.count) duplicate groups"
-                    )
-
-                    Text(
-                        "\(temporaryFileCount(in: result)) temporary-file candidates"
-                    )
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
-            if isAIAnalyzing {
-
-                ProgressView(
-                    "Orderly is understanding your files..."
-                )
-            }
-
-            if let aiAnalysis {
-
-                AIAnalysisView(
-                    result: aiAnalysis
-                )
-            }
-
-            if let aiError {
-
-                Text(aiError)
-                    .foregroundStyle(.red)
-            }
-
-            if !files.isEmpty {
-
-                List(files) { file in
-
-                    HStack {
-
-                        VStack(
-                            alignment: .leading,
-                            spacing: 4
-                        ) {
-
-                            Text(file.name)
-                                .fontWeight(.medium)
-
-                            Text(
-                                relativePath(for: file.url)
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        VStack(
-                            alignment: .trailing,
-                            spacing: 4
-                        ) {
-
-                            Text(file.fileType.rawValue.capitalized)
-
-                            Text(
-                                ByteCountFormatter
-                                    .string(
-                                        fromByteCount: file.size,
-                                        countStyle: .file
-                                    )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .frame(minHeight: 300)
-            }
+            sessionContent
+        }
+        .frame(
+            minWidth: 760,
+            minHeight: 560
+        )
+        .overlay(alignment: .bottom) {
 
             if let errorMessage {
 
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-                    .font(.caption)
+                OrderlyCard {
+                    Label(
+                        errorMessage,
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        OrderlyTheme.destructive
+                    )
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sessionContent: some View {
+
+        if let selectedFolder {
+
+            if isScanning {
+
+                ScanningView(
+                    folder: selectedFolder,
+                    files: files,
+                    progress: nil
+                )
+
+            } else if isAnalyzing {
+
+                progressView(
+                    title: "Analyzing files...",
+                    message: "Orderly is identifying file types, duplicates, and cleanup candidates."
+                )
+
+            } else if isAIAnalyzing {
+
+                progressView(
+                    title: "Building your declutter plan...",
+                    message: "The on-device model is reviewing the candidates conservatively."
+                )
+
+            } else if let cleanupPlan {
+
+                CleanupPlanView(
+                    plan: cleanupPlan,
+                    files: files
+                )
+
+            } else if let aiError {
+
+                VStack(spacing: 16) {
+
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 28))
+                        .foregroundStyle(
+                            OrderlyTheme.warning
+                        )
+
+                    Text("Orderly couldn't build a plan")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+
+                    Text(aiError)
+                        .foregroundStyle(
+                            OrderlyTheme.secondaryText
+                        )
+                        .multilineTextAlignment(.center)
+
+                    Button("Choose Another Folder") {
+                        chooseFolder()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(OrderlyTheme.accent)
+                }
+                .padding(40)
+
+            } else {
+
+                progressView(
+                    title: "Preparing...",
+                    message: "Orderly is getting the selected folder ready."
+                )
             }
 
-            Spacer()
+        } else {
+
+            EmptyStateView(
+                onSelectFolder: chooseFolder
+            )
         }
-        .padding(32)
-        .frame(
-            minWidth: 700,
-            minHeight: 500
-        )
+    }
+
+    private func progressView(
+        title: String,
+        message: String
+    ) -> some View {
+
+        VStack(spacing: 14) {
+
+            ProgressView()
+                .controlSize(.small)
+                .tint(OrderlyTheme.accent)
+
+            Text(title)
+                .font(.headline)
+
+            Text(message)
+                .foregroundStyle(
+                    OrderlyTheme.secondaryText
+                )
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(40)
+    }
+
+    private func chooseFolder() {
+
+        let panel = NSOpenPanel()
+
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "Choose"
+
+        if panel.runModal() == .OK,
+           let url = panel.url {
+            selectFolder(url)
+        }
     }
 
     private func selectFolder(_ url: URL) {
@@ -200,7 +180,8 @@ struct MainView: View {
         errorMessage = nil
         files = []
         analysisResult = nil
-        aiAnalysis = nil
+        modelCleanupPlan = nil
+        cleanupPlan = nil
         aiError = nil
         isAIAnalyzing = false
 
@@ -257,6 +238,20 @@ struct MainView: View {
                     files: scannedFiles
                 )
 
+                print("======== ANALYSIS ========")
+                print("Duplicate groups:", result.duplicateGroups.count)
+                print("Candidates:", result.candidates.count)
+
+                for candidate in result.candidates {
+                    print(
+                        "Candidate:",
+                        candidate.id,
+                        candidate.type.rawValue,
+                        candidate.fileIDs.count,
+                        candidate.confidence
+                    )
+                }
+
                 await MainActor.run {
 
                     analysisResult = result
@@ -266,14 +261,46 @@ struct MainView: View {
 
                 do {
 
-                    let response = try await modelSession.analyze(
-                        files: scannedFiles,
+                    let modelPlan = try await modelSession.analyze(
                         analysis: result
                     )
 
+                    print("======== MODEL PLAN ========")
+                    print("Summary:", modelPlan.summary)
+                    print("Recommendations:", modelPlan.recommendations.count)
+
+                    for recommendation in modelPlan.recommendations {
+                        print(
+                            "Recommendation:",
+                            recommendation.candidateID,
+                            recommendation.intent.rawValue,
+                            recommendation.title
+                        )
+                    }
+
+                    let plan = cleanupPlanner.createPlan(
+                        folder: url,
+                        files: scannedFiles,
+                        analysis: result,
+                        modelPlan: modelPlan
+                    )
+
+                    print("======== CLEANUP PLAN ========")
+                    print("Actions:", plan.actions.count)
+
+                    for action in plan.actions {
+                        print(
+                            "Action:",
+                            action.type.rawValue,
+                            action.title,
+                            action.fileIDs.count
+                        )
+                    }
+
                     await MainActor.run {
 
-                        aiAnalysis = response
+                        modelCleanupPlan = modelPlan
+                        cleanupPlan = plan
                         isAIAnalyzing = false
                     }
 
@@ -298,48 +325,5 @@ struct MainView: View {
                 }
             }
         }
-    }
-
-    private func temporaryFileCount(
-        in result: AnalysisResult
-    ) -> Int {
-
-        result.candidates
-            .filter { $0.type == .temporary }
-            .reduce(0) { $0 + $1.fileIDs.count }
-    }
-
-    private func relativePath(
-        for fileURL: URL
-    ) -> String {
-
-        guard let selectedFolder else {
-            return fileURL.path
-        }
-
-        let folderPath =
-            selectedFolder.path
-
-        let filePath =
-            fileURL.path
-
-        if filePath.hasPrefix(folderPath) {
-
-            let relative =
-                String(
-                    filePath.dropFirst(
-                        folderPath.count
-                    )
-                )
-
-            return relative
-                .trimmingCharacters(
-                    in: CharacterSet(
-                        charactersIn: "/"
-                    )
-                )
-        }
-
-        return filePath
     }
 }
