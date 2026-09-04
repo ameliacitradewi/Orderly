@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct MainView: View {
 
@@ -27,175 +28,151 @@ struct MainView: View {
 
     var body: some View {
 
-        VStack(spacing: 24) {
+        ZStack {
 
-            VStack(spacing: 8) {
+            OrderlyTheme.background
+                .ignoresSafeArea()
 
-                Text("Orderly")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+            sessionContent
+        }
+        .frame(
+            minWidth: 760,
+            minHeight: 560
+        )
+        .overlay(alignment: .bottom) {
 
-                Text(
-                    selectedFolder?.path
-                    ?? "Choose a folder to organize"
-                )
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if let errorMessage {
+
+                OrderlyCard {
+                    Label(
+                        errorMessage,
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        OrderlyTheme.destructive
+                    )
+                }
+                .padding(20)
             }
+        }
+    }
 
-            FolderPickerView { folderURL in
-                selectFolder(folderURL)
-            }
+    @ViewBuilder
+    private var sessionContent: some View {
+
+        if let selectedFolder {
 
             if isScanning {
 
-                ProgressView("Scanning...")
-                    .controlSize(.small)
+                ScanningView(
+                    folder: selectedFolder,
+                    files: files,
+                    progress: nil
+                )
 
             } else if isAnalyzing {
 
-                ProgressView("Analyzing files...")
-                    .controlSize(.small)
-
-            } else if selectedFolder != nil {
-
-                Text(
-                    "\(files.count) files found"
+                progressView(
+                    title: "Analyzing files...",
+                    message: "Orderly is identifying file types, duplicates, and cleanup candidates."
                 )
-                .font(.headline)
-            }
 
-            if let result = analysisResult {
+            } else if isAIAnalyzing {
 
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    Text("Analysis")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Text(
-                        "\(result.totalFiles) files • " +
-                        ByteCountFormatter.string(
-                            fromByteCount: result.totalSize,
-                            countStyle: .file
-                        )
-                    )
-
-                    ForEach(result.fileTypes) { summary in
-
-                        HStack {
-
-                            Text(
-                                summary.type.rawValue.capitalized
-                            )
-
-                            Spacer()
-
-                            Text("\(summary.count)")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Divider()
-
-                    Text(
-                        "\(result.duplicateGroups.count) duplicate groups"
-                    )
-
-                    Text(
-                        "\(temporaryFileCount(in: result)) temporary-file candidates"
-                    )
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
-            if isAIAnalyzing {
-
-                ProgressView(
-                    "Orderly is understanding your files..."
+                progressView(
+                    title: "Building your declutter plan...",
+                    message: "The on-device model is reviewing the candidates conservatively."
                 )
-            }
 
-            if let cleanupPlan {
+            } else if let cleanupPlan {
 
                 CleanupPlanView(
                     plan: cleanupPlan,
                     files: files
                 )
-            }
 
-            if let aiError {
+            } else if let aiError {
 
-                Text(aiError)
-                    .foregroundStyle(.red)
-            }
+                VStack(spacing: 16) {
 
-            if !files.isEmpty {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 28))
+                        .foregroundStyle(
+                            OrderlyTheme.warning
+                        )
 
-                List(files) { file in
+                    Text("Orderly couldn't build a plan")
+                        .font(.title2)
+                        .fontWeight(.semibold)
 
-                    HStack {
+                    Text(aiError)
+                        .foregroundStyle(
+                            OrderlyTheme.secondaryText
+                        )
+                        .multilineTextAlignment(.center)
 
-                        VStack(
-                            alignment: .leading,
-                            spacing: 4
-                        ) {
-
-                            Text(file.name)
-                                .fontWeight(.medium)
-
-                            Text(
-                                relativePath(for: file.url)
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        VStack(
-                            alignment: .trailing,
-                            spacing: 4
-                        ) {
-
-                            Text(file.fileType.rawValue.capitalized)
-
-                            Text(
-                                ByteCountFormatter
-                                    .string(
-                                        fromByteCount: file.size,
-                                        countStyle: .file
-                                    )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
+                    Button("Choose Another Folder") {
+                        chooseFolder()
                     }
-                    .padding(.vertical, 4)
+                    .buttonStyle(.borderedProminent)
+                    .tint(OrderlyTheme.accent)
                 }
-                .frame(minHeight: 300)
+                .padding(40)
+
+            } else {
+
+                progressView(
+                    title: "Preparing...",
+                    message: "Orderly is getting the selected folder ready."
+                )
             }
 
-            if let errorMessage {
+        } else {
 
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
-
-            Spacer()
+            EmptyStateView(
+                onSelectFolder: chooseFolder
+            )
         }
-        .padding(32)
-        .frame(
-            minWidth: 700,
-            minHeight: 500
-        )
+    }
+
+    private func progressView(
+        title: String,
+        message: String
+    ) -> some View {
+
+        VStack(spacing: 14) {
+
+            ProgressView()
+                .controlSize(.small)
+                .tint(OrderlyTheme.accent)
+
+            Text(title)
+                .font(.headline)
+
+            Text(message)
+                .foregroundStyle(
+                    OrderlyTheme.secondaryText
+                )
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(40)
+    }
+
+    private func chooseFolder() {
+
+        let panel = NSOpenPanel()
+
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "Choose"
+
+        if panel.runModal() == .OK,
+           let url = panel.url {
+            selectFolder(url)
+        }
     }
 
     private func selectFolder(_ url: URL) {
@@ -260,7 +237,7 @@ struct MainView: View {
                     folder: url,
                     files: scannedFiles
                 )
-                
+
                 print("======== ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
                 print("Candidates:", result.candidates.count)
@@ -287,7 +264,7 @@ struct MainView: View {
                     let modelPlan = try await modelSession.analyze(
                         analysis: result
                     )
-                    
+
                     print("======== MODEL PLAN ========")
                     print("Summary:", modelPlan.summary)
                     print("Recommendations:", modelPlan.recommendations.count)
@@ -307,7 +284,7 @@ struct MainView: View {
                         analysis: result,
                         modelPlan: modelPlan
                     )
-                    
+
                     print("======== CLEANUP PLAN ========")
                     print("Actions:", plan.actions.count)
 
@@ -348,48 +325,5 @@ struct MainView: View {
                 }
             }
         }
-    }
-
-    private func temporaryFileCount(
-        in result: AnalysisResult
-    ) -> Int {
-
-        result.candidates
-            .filter { $0.type == .temporary }
-            .reduce(0) { $0 + $1.fileIDs.count }
-    }
-
-    private func relativePath(
-        for fileURL: URL
-    ) -> String {
-
-        guard let selectedFolder else {
-            return fileURL.path
-        }
-
-        let folderPath =
-            selectedFolder.path
-
-        let filePath =
-            fileURL.path
-
-        if filePath.hasPrefix(folderPath) {
-
-            let relative =
-                String(
-                    filePath.dropFirst(
-                        folderPath.count
-                    )
-                )
-
-            return relative
-                .trimmingCharacters(
-                    in: CharacterSet(
-                        charactersIn: "/"
-                    )
-                )
-        }
-
-        return filePath
     }
 }
