@@ -102,6 +102,9 @@ struct ScanningView: View {
         case .code:
             return "chevron.left.forwardslash.chevron.right"
 
+        case .artifact:
+            return "doc.badge.gearshape"
+
         case .other:
             return "doc"
         }

@@ -1,92 +1,45 @@
-//
-//  FileSystemService.swift
-//  Orderly
-//
-
 import Foundation
 
-final class FileSystemService {
-
-    private let fileManager = FileManager.default
-
-    func scanDirectory(
-        at directoryURL: URL
-    ) throws -> [FileMetadata] {
-
-        let keys: [URLResourceKey] = [
-            .nameKey,
-            .isDirectoryKey,
-            .isHiddenKey,
-            .fileSizeKey,
-            .creationDateKey,
-            .contentModificationDateKey,
-            .contentAccessDateKey,
-            .typeIdentifierKey
+actor FileSystemService {
+    func scanDirectory(at directoryURL: URL) throws -> [FileMetadata] {
+        let keys: Set<URLResourceKey> = [
+            .nameKey, .isDirectoryKey, .isRegularFileKey, .isPackageKey, .isSymbolicLinkKey,
+            .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey,
+            .contentAccessDateKey, .typeIdentifierKey
         ]
-
-        guard let enumerator = fileManager.enumerator(
-            at: directoryURL,
-            includingPropertiesForKeys: keys,
-            options: [
-                .skipsPackageDescendants
-            ]
-        ) else {
-            throw FileSystemError.cannotEnumerateDirectory
-        }
-
+        guard let enumerator = FileManager.default.enumerator(
+            at: directoryURL, includingPropertiesForKeys: Array(keys), options: [.skipsPackageDescendants]
+        ) else { throw FileSystemError.cannotEnumerateDirectory }
         var files: [FileMetadata] = []
-
         for case let url as URL in enumerator {
-
+            try Task.checkCancellation()
             do {
-                let resourceValues = try url.resourceValues(
-                    forKeys: Set(keys)
-                )
-
-                let isDirectory =
-                    resourceValues.isDirectory ?? false
-
-                if isDirectory {
-                    continue
-                }
-
-                let fileMetadata = FileMetadata(
-                    id: UUID(),
-                    url: url,
-                    name: resourceValues.name
-                        ?? url.lastPathComponent,
-                    extensionName: url.pathExtension,
-                    size: Int64(
-                        resourceValues.fileSize ?? 0
-                    ),
-                    createdAt: resourceValues.creationDate,
-                    modifiedAt: resourceValues.contentModificationDate,
-                    accessedAt: resourceValues.contentAccessDate,
-                    isDirectory: false,
-                    isHidden: resourceValues.isHidden ?? false,
-                    uti: resourceValues.typeIdentifier
-                )
-
-                files.append(fileMetadata)
-
+                let values = try url.resourceValues(forKeys: keys)
+                guard values.isSymbolicLink != true else { enumerator.skipDescendants(); continue }
+                let isDirectory = values.isDirectory ?? false
+                let isDocumentPackage = isDirectory && PackageContents.supportedExtensions.contains(url.pathExtension.lowercased())
+                if isDocumentPackage { enumerator.skipDescendants() }
+                guard values.isRegularFile == true || isDocumentPackage else { continue }
+                let size = isDocumentPackage ? try PackageContents.snapshot(at: url).totalSize
+                    : Int64(values.fileSize ?? 0)
+                files.append(FileMetadata(
+                    id: UUID(), url: url, name: values.name ?? url.lastPathComponent,
+                    extensionName: url.pathExtension, size: size, createdAt: values.creationDate,
+                    modifiedAt: values.contentModificationDate, accessedAt: values.contentAccessDate,
+                    isDirectory: isDirectory, isHidden: values.isHidden ?? false, uti: values.typeIdentifier
+                ))
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                print(
-                    "Orderly: Could not read \(url): \(error)"
-                )
+                // Do not invent metadata for an inaccessible item.
+                continue
             }
         }
-
-        return files
+        return files.sorted { $0.url.path < $1.url.path }
     }
 }
 
-enum FileSystemError: LocalizedError {
+nonisolated enum FileSystemError: LocalizedError {
     case cannotEnumerateDirectory
-
-    var errorDescription: String? {
-        switch self {
-        case .cannotEnumerateDirectory:
-            return "Orderly could not read this folder."
-        }
-    }
+    var errorDescription: String? { "Orderly could not read this folder." }
 }

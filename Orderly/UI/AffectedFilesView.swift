@@ -141,6 +141,14 @@ struct AffectedFilesView: View {
 
                     Text(file.name)
                         .lineLimit(1)
+                        .help(file.url.path)
+
+                    FileTagsView(file: file, files: files)
+                    if let modified = file.modifiedAt {
+                        Text("Last Modified: " + modified.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption2)
+                            .foregroundStyle(OrderlyTheme.secondaryText)
+                    }
 
                     Text(
                         file.url
@@ -268,6 +276,9 @@ struct AffectedFilesView: View {
 
         case .code:
             return "chevron.left.forwardslash.chevron.right"
+
+        case .artifact:
+            return "doc.badge.gearshape"
 
         case .other:
             return "doc"

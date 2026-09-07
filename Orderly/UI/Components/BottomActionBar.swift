@@ -26,7 +26,7 @@ struct BottomActionBar: View {
                         OrderlyTheme.tertiaryText
                     )
 
-                Text("saves \(formattedSize)")
+                Text("\(formattedSize) to Trash")
                     .foregroundStyle(
                         OrderlyTheme.success
                     )

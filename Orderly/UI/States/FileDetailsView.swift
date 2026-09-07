@@ -18,13 +18,10 @@ struct FileDetailsView: View {
                 .lineLimit(1)
             }
 
-            TableColumn("Type") { file in
-                Text(file.fileType.rawValue.capitalized)
-                    .foregroundStyle(
-                        OrderlyTheme.secondaryText
-                    )
+            TableColumn("Tags") { file in
+                FileTagsView(file: file, files: files)
             }
-            .width(min: 80, ideal: 100, max: 130)
+            .width(min: 120, ideal: 160, max: 200)
 
             TableColumn("Size") { file in
                 Text(
@@ -40,7 +37,7 @@ struct FileDetailsView: View {
             }
             .width(min: 80, ideal: 100, max: 120)
 
-            TableColumn("Modified") { file in
+            TableColumn("Last Modified") { file in
                 if let modified = file.modifiedAt {
                     Text(
                         modified,
@@ -48,6 +45,9 @@ struct FileDetailsView: View {
                             .year()
                             .month()
                             .day()
+                            .hour()
+                            .minute()
+                            .second()
                     )
                 } else {
                     Text("—")
@@ -82,6 +82,9 @@ struct FileDetailsView: View {
 
         case .code:
             return "chevron.left.forwardslash.chevron.right"
+
+        case .artifact:
+            return "doc.badge.gearshape"
 
         case .other:
             return "doc"

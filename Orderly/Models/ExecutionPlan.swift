@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct ExecutionPlan: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct ExecutionPlan: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let cleanupPlanID: UUID
     let selectedActions: [ExecutionAction]
@@ -27,7 +27,7 @@ struct ExecutionPlan: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-struct ExecutionAction: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct ExecutionAction: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let sourceActionID: UUID
     let type: CleanupActionType

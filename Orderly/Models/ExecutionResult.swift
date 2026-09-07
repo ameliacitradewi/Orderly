@@ -1,6 +1,6 @@
 import Foundation
 
-struct ExecutionProgress: Sendable {
+nonisolated struct ExecutionProgress: Sendable {
 
     let completedActions: Int
     let totalActions: Int
@@ -17,7 +17,7 @@ struct ExecutionProgress: Sendable {
     }
 }
 
-struct ExecutionResult: Sendable {
+nonisolated struct ExecutionResult: Sendable {
 
     let planID: UUID
 
@@ -57,7 +57,7 @@ struct ExecutionResult: Sendable {
     }
 }
 
-struct ExecutionRecord: Identifiable, Sendable {
+nonisolated struct ExecutionRecord: Identifiable, Sendable {
 
     let id: UUID
 
@@ -77,7 +77,7 @@ struct ExecutionRecord: Identifiable, Sendable {
     let message: String
 }
 
-enum ExecutionRecordStatus: Sendable {
+nonisolated enum ExecutionRecordStatus: Sendable {
     case succeeded
     case failed
 }

@@ -33,7 +33,7 @@ struct CompletionView: View {
             .fontWeight(.semibold)
 
             Text(
-                "Freed up \(formattedReclaimedSize) of disk space."
+                "Moved \(formattedReclaimedSize) to Trash. Space is freed when Trash is emptied."
             )
             .foregroundStyle(
                 .secondary

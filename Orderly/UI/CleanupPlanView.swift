@@ -90,6 +90,10 @@ struct CleanupPlanView: View {
                     OrderlyTheme.secondaryText
                 )
 
+                Text(plan.summary)
+                    .font(.caption)
+                    .foregroundStyle(OrderlyTheme.secondaryText)
+
                 ForEach(
                     $reviewedActions
                 ) { $reviewedAction in
@@ -120,6 +124,7 @@ struct CleanupPlanView: View {
         )
 
         return approvedActions
+            .filter { $0.action.type == .trash }
             .flatMap {
                 lookup.files(
                     withIDs: $0.action.selectedFileIDs
