@@ -16,7 +16,9 @@ struct AnalysisCandidate: Identifiable, Codable, Hashable, Sendable {
 enum CandidateType: String, Codable, Hashable, Sendable {
     case grouping
     case duplicate
+    case related
     case temporary
+    case artifact
     case redundant
     case archive
     case review
