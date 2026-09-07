@@ -23,6 +23,7 @@ struct MainView: View {
     private let securityAccess = SecurityScopedAccess()
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
+    private let evidenceEngine = EvidenceEngine()
     private let modelSession = OrderlyModelSession()
     private let cleanupPlanner = CleanupPlanner()
 
@@ -238,6 +239,13 @@ struct MainView: View {
                     files: scannedFiles
                 )
 
+                let evidence = evidenceEngine.buildEvidence(
+                    candidates: result.candidates,
+                    files: scannedFiles,
+                    duplicateGroups: result.duplicateGroups,
+                    rootFolder: url
+                )
+
                 print("======== ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
                 print("Candidates:", result.candidates.count)
@@ -262,7 +270,8 @@ struct MainView: View {
                 do {
 
                     let modelPlan = try await modelSession.analyze(
-                        analysis: result
+                        analysis: result,
+                        evidence: evidence
                     )
 
                     print("======== MODEL PLAN ========")
@@ -273,9 +282,19 @@ struct MainView: View {
                         print(
                             "Recommendation:",
                             recommendation.candidateID,
-                            recommendation.intent.rawValue,
                             recommendation.title
                         )
+
+                        for decision in recommendation.fileDecisions {
+                            print(
+                                "   ",
+                                decision.fileReference,
+                                "→",
+                                decision.disposition.rawValue,
+                                "|",
+                                decision.reason
+                            )
+                        }
                     }
 
                     let plan = cleanupPlanner.createPlan(

@@ -203,51 +203,37 @@ final class EvidenceEngine {
         for file: FileMetadata
     ) -> String {
 
-        let stem = file.url
+        var stem = file.url
             .deletingPathExtension()
             .lastPathComponent
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
+            .lowercased()
 
-        let tokens = stem
+        let patterns = [
+
+            #"(?i)[ ._-]+(?:v|ver|version|rev|revision)[ ._-]*[0-9]+$"#,
+
+            #"(?i)[ ._-]+(?:copy|draft|final|latest|old)(?:[ ._-]*[0-9]+)?$"#,
+
+            #"\s*\([0-9]+\)$"#
+        ]
+
+        for pattern in patterns {
+
+            stem = stem.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: .regularExpression
+            )
+        }
+
+        return stem
             .components(
                 separatedBy: CharacterSet.alphanumerics.inverted
             )
-            .filter { !$0.isEmpty }
-            .filter { token in
-                !isVersionToken(token)
+            .filter {
+                !$0.isEmpty
             }
-
-        return tokens.joined()
-    }
-
-    private func isVersionToken(
-        _ token: String
-    ) -> Bool {
-
-        let lowercased = token.lowercased()
-
-        if [
-            "copy",
-            "draft",
-            "final",
-            "latest",
-            "new",
-            "old"
-        ].contains(lowercased) {
-            return true
-        }
-
-        if lowercased.allSatisfy(\.isNumber) {
-            return true
-        }
-
-        return lowercased.range(
-            of: "^(v|ver|version|rev|revision)[0-9]+$",
-            options: .regularExpression
-        ) != nil
+            .joined()
     }
 
     private func hasVersionLikeName(
