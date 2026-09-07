@@ -5,6 +5,9 @@ struct CleanupPlanView: View {
     let plan: CleanupPlan
     let files: [FileMetadata]
 
+    let onExecute:
+        (ExecutionPlan) -> Void
+
     @State private var selectedTab:
         ReviewTab = .plan
 
@@ -13,11 +16,14 @@ struct CleanupPlanView: View {
 
     init(
         plan: CleanupPlan,
-        files: [FileMetadata]
+        files: [FileMetadata],
+        onExecute:
+            @escaping (ExecutionPlan) -> Void
     ) {
 
         self.plan = plan
         self.files = files
+        self.onExecute = onExecute
 
         _reviewedActions = State(
             initialValue: plan.actions.map {
@@ -150,6 +156,10 @@ struct CleanupPlanView: View {
                 )
             }
 
+        guard !executionActions.isEmpty else {
+            return
+        }
+
         let executionPlan =
             ExecutionPlan(
                 cleanupPlanID: plan.id,
@@ -157,10 +167,8 @@ struct CleanupPlanView: View {
                 createdAt: Date()
             )
 
-        print(
-            "Orderly: ExecutionPlan created:"
+        onExecute(
+            executionPlan
         )
-
-        print(executionPlan)
     }
 }
