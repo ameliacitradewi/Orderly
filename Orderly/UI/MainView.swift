@@ -17,6 +17,15 @@ struct MainView: View {
     @State private var modelCleanupPlan: ModelCleanupPlan?
     @State private var cleanupPlan: CleanupPlan?
     @State private var isAIAnalyzing = false
+    @State private var isExecuting = false
+    @State private var executionProgress =
+        ExecutionProgress(
+            completedActions: 0,
+            totalActions: 0,
+            currentMessage: ""
+        )
+    @State private var executionResult:
+        ExecutionResult?
     @State private var aiError: String?
     @State private var errorMessage: String?
 
@@ -26,6 +35,7 @@ struct MainView: View {
     private let evidenceEngine = EvidenceEngine()
     private let modelSession = OrderlyModelSession()
     private let cleanupPlanner = CleanupPlanner()
+    private let executionEngine = ExecutionEngine()
 
     var body: some View {
 
@@ -85,11 +95,31 @@ struct MainView: View {
                     message: "The on-device model is reviewing the candidates conservatively."
                 )
 
+            } else if isExecuting {
+
+                ExecutionProgressView(
+                    progress: executionProgress
+                )
+
+            } else if let executionResult {
+
+                CompletionView(
+                    result: executionResult,
+                    onChooseAnotherFolder: {
+                        resetSession()
+                    }
+                )
+
             } else if let cleanupPlan {
 
                 CleanupPlanView(
                     plan: cleanupPlan,
-                    files: files
+                    files: files,
+                    onExecute: { executionPlan in
+                        executePlan(
+                            executionPlan
+                        )
+                    }
                 )
 
             } else if let aiError {
@@ -178,29 +208,15 @@ struct MainView: View {
 
     private func selectFolder(_ url: URL) {
 
-        errorMessage = nil
-        files = []
-        analysisResult = nil
-        modelCleanupPlan = nil
-        cleanupPlan = nil
-        aiError = nil
-        isAIAnalyzing = false
-
-        guard securityAccess.startAccessing(url) else {
-
-            errorMessage =
-                "Orderly could not access this folder."
-
-            return
-        }
-
-        selectedFolder = url
+        resetSession()
 
         do {
 
             try bookmarkStore.saveBookmark(
                 for: url
             )
+
+            selectedFolder = url
 
             scanFolder(url)
 
@@ -217,6 +233,33 @@ struct MainView: View {
         isAnalyzing = false
 
         Task {
+
+            guard securityAccess.startAccessing(
+                url
+            ) else {
+
+                await MainActor.run {
+
+                    errorMessage =
+                        "Orderly could not access this folder."
+
+                    isScanning = false
+                    isAnalyzing = false
+                }
+
+                return
+            }
+
+            var isAccessActive = true
+
+            defer {
+
+                if isAccessActive {
+                    securityAccess.stopAccessing(
+                        url
+                    )
+                }
+            }
 
             do {
 
@@ -245,6 +288,12 @@ struct MainView: View {
                     duplicateGroups: result.duplicateGroups,
                     rootFolder: url
                 )
+
+                securityAccess.stopAccessing(
+                    url
+                )
+
+                isAccessActive = false
 
                 print("======== ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
@@ -344,5 +393,83 @@ struct MainView: View {
                 }
             }
         }
+    }
+
+    private func executePlan(
+        _ plan: ExecutionPlan
+    ) {
+
+        guard let folder = selectedFolder else {
+            return
+        }
+
+        isExecuting = true
+        executionResult = nil
+        errorMessage = nil
+
+        executionProgress = ExecutionProgress(
+            completedActions: 0,
+            totalActions: plan.selectedActions.count,
+            currentMessage: "Preparing execution..."
+        )
+
+        Task {
+
+            do {
+
+                let result =
+                    try await executionEngine.execute(
+                        plan: plan,
+                        files: files,
+                        rootFolder: folder
+                    ) { progress in
+
+                        await MainActor.run {
+                            executionProgress = progress
+                        }
+                    }
+
+                await MainActor.run {
+
+                    executionResult = result
+                    isExecuting = false
+                }
+
+            } catch {
+
+                await MainActor.run {
+
+                    errorMessage =
+                        error.localizedDescription
+
+                    isExecuting = false
+                }
+            }
+        }
+    }
+
+    private func resetSession() {
+
+        selectedFolder = nil
+        files = []
+
+        analysisResult = nil
+        modelCleanupPlan = nil
+        cleanupPlan = nil
+
+        executionResult = nil
+        executionProgress = ExecutionProgress(
+            completedActions: 0,
+            totalActions: 0,
+            currentMessage: ""
+        )
+
+        isScanning = false
+        isAnalyzing = false
+        isAIAnalyzing = false
+        isExecuting = false
+
+        aiError = nil
+        errorMessage = nil
     }
 }

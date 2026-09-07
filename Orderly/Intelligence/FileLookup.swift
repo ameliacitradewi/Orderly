@@ -1,6 +1,6 @@
 import Foundation
 
-struct FileLookup {
+nonisolated struct FileLookup: Sendable {
 
     private let filesByID: [UUID: FileMetadata]
 
