@@ -34,7 +34,9 @@ struct MainView: View {
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
     private let evidenceEngine = EvidenceEngine()
-    private let modelSession = OrderlyModelSession()
+    private let modelSession = QwenModelSession(
+        llm: QwenMLXService()
+    )
     private let cleanupPlanner = CleanupPlanner()
     private let executionEngine = ExecutionEngine()
 
@@ -122,6 +124,9 @@ struct MainView: View {
                         )
                     }
                 )
+                .onAppear {
+                    print("======== CLEANUP PLAN VIEW APPEARED ========")
+                }
 
             } else if let aiError {
 

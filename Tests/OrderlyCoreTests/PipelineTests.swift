@@ -176,4 +176,57 @@ final class PipelineTests: XCTestCase {
         let duplicates = FileLookup(files: scan.files).files(withIDs: scan.groups[0].files)
         XCTAssertEqual(Set(duplicates.map(\.name)), Set(["a.pages", "b.pages"]))
     }
+
+    func testModelJSONDecoderExtractsQwenJSONFromSurroundingText() throws {
+        let rawOutput = """
+        <think>Consider {metadata} carefully.</think>
+        ```json
+        {
+          "fileDecisions": [
+            {
+              "fileReference": "F1",
+              "disposition": "keep",
+              "reason": "Newest {verified} duplicate copy."
+            },
+            {
+              "fileReference": "F2",
+              "disposition": "trash",
+              "reason": "SHA256-identical older duplicate."
+            }
+          ]
+        }
+        ```
+        """
+
+        let batch = try ModelJSONDecoder.decode(
+            FileDecisionBatch.self,
+            from: rawOutput
+        )
+
+        XCTAssertEqual(batch.fileDecisions.count, 2)
+        XCTAssertEqual(batch.fileDecisions[0].fileReference, "F1")
+        XCTAssertEqual(batch.fileDecisions[0].disposition, .keep)
+        XCTAssertEqual(batch.fileDecisions[1].disposition, .trash)
+    }
+
+    func testModelJSONDecoderRejectsUnknownDisposition() {
+        let rawOutput = """
+        {
+          "fileDecisions": [
+            {
+              "fileReference": "F1",
+              "disposition": "delete",
+              "reason": "Unsupported disposition."
+            }
+          ]
+        }
+        """
+
+        XCTAssertThrowsError(
+            try ModelJSONDecoder.decode(
+                FileDecisionBatch.self,
+                from: rawOutput
+            )
+        )
+    }
 }

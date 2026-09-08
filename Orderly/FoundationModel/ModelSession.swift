@@ -2,9 +2,26 @@ import Foundation
 import FoundationModels
 
 @Generable
-struct FileDecisionBatch: Sendable {
-    @Guide(description: "Exactly one decision per supplied F reference; reasons are one short sentence.")
-    let fileDecisions: [ModelFileDecision]
+private enum GeneratedFileDisposition: String, Sendable {
+    case keep
+    case trash
+    case move
+    case review
+}
+
+@Generable
+private struct GeneratedModelFileDecision: Sendable {
+    @Guide(description: "A supplied file reference such as F1 or F2.")
+    let fileReference: String
+    let disposition: GeneratedFileDisposition
+    @Guide(description: "One short sentence explaining the decision.")
+    let reason: String
+}
+
+@Generable
+private struct GeneratedFileDecisionBatch: Sendable {
+    @Guide(description: "Exactly one decision per supplied F reference.")
+    let fileDecisions: [GeneratedModelFileDecision]
 }
 
 @MainActor
@@ -96,10 +113,16 @@ final class OrderlyModelSession {
             """
         }.joined(separator: "\n\n")
         let response = try await session.respond(
-            to: prompt, generating: FileDecisionBatch.self,
+            to: prompt, generating: GeneratedFileDecisionBatch.self,
             options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 650)
         )
-        return response.content.fileDecisions
+        return response.content.fileDecisions.map { decision in
+            ModelFileDecision(
+                fileReference: decision.fileReference,
+                disposition: FileDisposition(rawValue: decision.disposition.rawValue) ?? .review,
+                reason: decision.reason
+            )
+        }
         // Returning the value releases this local session; no session is retained by the coordinator.
     }
 

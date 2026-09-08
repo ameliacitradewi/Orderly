@@ -9,7 +9,7 @@ let package = Package(
     products: [.library(name: "OrderlyCore", targets: ["OrderlyCore"])],
     targets: [
         .target(name: "OrderlyCore", path: "Orderly",
-                exclude: ["App", "Assets.xcassets", "DesignSystem", "UI"],
+                exclude: ["AI", "App", "Assets.xcassets", "DesignSystem", "UI"],
                 sources: ["FileSystem", "FoundationModel", "Intelligence", "Models"],
                 swiftSettings: [.defaultIsolation(MainActor.self)]),
         .testTarget(name: "OrderlyCoreTests", dependencies: ["OrderlyCore"], path: "Tests/OrderlyCoreTests")
