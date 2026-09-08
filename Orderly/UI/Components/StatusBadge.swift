@@ -27,7 +27,7 @@ struct StatusBadge: View {
 
         switch actionType {
         case .trash:
-            return "TRASH"
+            return "DELETE"
 
         case .move:
             return "ORGANIZE"

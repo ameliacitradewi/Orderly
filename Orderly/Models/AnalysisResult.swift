@@ -1,8 +1,3 @@
-//
-//  AnalysisResult.swift
-//  Orderly
-//
-
 import Foundation
 
 struct AnalysisResult: Codable, Hashable, Sendable {
@@ -13,4 +8,6 @@ struct AnalysisResult: Codable, Hashable, Sendable {
     let duplicateGroups: [DuplicateGroup]
     let candidates: [AnalysisCandidate]
     let analyzedAt: Date
+    let files: [FileMetadata]
+    let unreadableHashCount: Int
 }

@@ -2,7 +2,7 @@ import Foundation
 import FoundationModels
 
 @Generable
-enum FileDisposition: String, Sendable {
+nonisolated enum FileDisposition: String, Sendable {
     case keep
     case trash
     case move
@@ -10,7 +10,7 @@ enum FileDisposition: String, Sendable {
 }
 
 @Generable
-struct ModelFileDecision: Sendable {
+nonisolated struct ModelFileDecision: Sendable {
 
     @Guide(
         description: "File reference copied exactly from the supplied candidate, such as F1 or F2."
@@ -26,7 +26,7 @@ struct ModelFileDecision: Sendable {
 }
 
 @Generable
-struct CleanupRecommendation: Sendable {
+nonisolated struct CleanupRecommendation: Sendable {
 
     @Guide(
         description: "Candidate ID copied exactly from the supplied candidate."

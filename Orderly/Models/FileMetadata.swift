@@ -1,11 +1,6 @@
-//
-//  FileMetadata.swift
-//  Orderly
-//
-
 import Foundation
 
-struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let url: URL
     let name: String
@@ -18,7 +13,17 @@ struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
     let isHidden: Bool
     let uti: String?
 
+    var classification: FileType? = nil
+    var duplicateGroupID: UUID? = nil
+    var duplicateSHA256: String? = nil
+    var duplicateKeeperID: UUID? = nil
+    var duplicateCopyCount: Int = 0
+
     var fileType: FileType {
-        FileType.from(fileExtension: extensionName)
+        classification ?? ExtensionCatalog.category(for: ExtensionCatalog.key(for: name)) ?? .other
+    }
+
+    var tags: [String] {
+        [fileType.tagName] + (duplicateGroupID == nil ? [] : ["SHA256 Duplicate"])
     }
 }

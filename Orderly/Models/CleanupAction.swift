@@ -8,20 +8,20 @@
 
 import Foundation
 
-enum CleanupActionType: String, Codable, Hashable, Sendable {
+nonisolated enum CleanupActionType: String, Codable, Hashable, Sendable {
     case createFolder
     case move
     case rename
     case trash
 }
 
-enum RiskLevel: String, Codable, Hashable, Sendable {
+nonisolated enum RiskLevel: String, Codable, Hashable, Sendable {
     case low
     case medium
     case high
 }
 
-struct CleanupAction: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct CleanupAction: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
 
     let type: CleanupActionType

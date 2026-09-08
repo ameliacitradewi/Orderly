@@ -12,6 +12,7 @@ struct MainView: View {
     @State private var files: [FileMetadata] = []
 
     @State private var isScanning = false
+    @State private var scanTask: Task<Void, Never>?
     @State private var isAnalyzing = false
     @State private var analysisResult: AnalysisResult?
     @State private var modelCleanupPlan: ModelCleanupPlan?
@@ -85,14 +86,14 @@ struct MainView: View {
 
                 progressView(
                     title: "Analyzing files...",
-                    message: "Orderly is identifying file types, duplicates, and cleanup candidates."
+                    message: "Orderly is tagging extensions and checking files for SHA256 duplicates."
                 )
 
             } else if isAIAnalyzing {
 
                 progressView(
                     title: "Building your declutter plan...",
-                    message: "The on-device model is reviewing the candidates conservatively."
+                    message: "The on-device model is preparing Delete and Organize recommendations."
                 )
 
             } else if isExecuting {
@@ -232,7 +233,8 @@ struct MainView: View {
         isScanning = true
         isAnalyzing = false
 
-        Task {
+        scanTask?.cancel()
+        scanTask = Task {
 
             guard securityAccess.startAccessing(
                 url
@@ -240,8 +242,7 @@ struct MainView: View {
 
                 await MainActor.run {
 
-                    errorMessage =
-                        "Orderly could not access this folder."
+                    aiError = "Orderly could not access this folder."
 
                     isScanning = false
                     isAnalyzing = false
@@ -263,12 +264,8 @@ struct MainView: View {
 
             do {
 
-                let scannedFiles =
-                    try await Task.detached {
-                        try await FileSystemService().scanDirectory(
-                            at: url
-                        )
-                    }.value
+                let scannedFiles = try await FileSystemService().scanDirectory(at: url)
+                try Task.checkCancellation()
 
                 await MainActor.run {
 
@@ -277,14 +274,17 @@ struct MainView: View {
                     isAnalyzing = true
                 }
 
-                let result = await analysisEngine.analyze(
+                let result = try await analysisEngine.analyze(
                     folder: url,
                     files: scannedFiles
                 )
 
+                try Task.checkCancellation()
+                files = result.files
+
                 let evidence = evidenceEngine.buildEvidence(
                     candidates: result.candidates,
-                    files: scannedFiles,
+                    files: result.files,
                     duplicateGroups: result.duplicateGroups,
                     rootFolder: url
                 )
@@ -346,9 +346,10 @@ struct MainView: View {
                         }
                     }
 
+                    try Task.checkCancellation()
                     let plan = cleanupPlanner.createPlan(
                         folder: url,
-                        files: scannedFiles,
+                        files: result.files,
                         analysis: result,
                         modelPlan: modelPlan
                     )
@@ -372,6 +373,8 @@ struct MainView: View {
                         isAIAnalyzing = false
                     }
 
+                } catch is CancellationError {
+                    return
                 } catch {
 
                     await MainActor.run {
@@ -381,12 +384,13 @@ struct MainView: View {
                     }
                 }
 
+            } catch is CancellationError {
+                return
             } catch {
 
                 await MainActor.run {
 
-                    errorMessage =
-                        error.localizedDescription
+                    aiError = error.localizedDescription
 
                     isScanning = false
                     isAnalyzing = false
@@ -450,6 +454,8 @@ struct MainView: View {
 
     private func resetSession() {
 
+        scanTask?.cancel()
+        scanTask = nil
         selectedFolder = nil
         files = []
 

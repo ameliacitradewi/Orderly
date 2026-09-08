@@ -135,6 +135,17 @@ actor ExecutionEngine {
                         )
                 }
 
+                if action.type == .trash {
+                    guard CleanupPolicy.resolve(.trash, for: file, root: rootFolder) == .trash else {
+                        throw ExecutionEngineError.invalidCleanupPolicy
+                    }
+                } else if action.type == .move {
+                    guard CleanupPolicy.resolve(.move, for: file, root: rootFolder) == .move,
+                          action.destination?.standardizedFileURL == CleanupPolicy.destination(for: file, root: rootFolder) else {
+                        throw ExecutionEngineError.invalidCleanupPolicy
+                    }
+                }
+
                 guard !claimedFileIDs.contains(
                     fileID
                 ) else {
@@ -269,6 +280,7 @@ actor ExecutionEngine {
 
         do {
 
+            try DeletionVerifier.verify(file: file, lookup: lookup, root: rootFolder)
             var resultingURL: NSURL?
 
             try fileManager.trashItem(
@@ -366,24 +378,23 @@ actor ExecutionEngine {
                 )
             }
 
-            let destination =
-                destinationFolder
-                    .appendingPathComponent(
-                        file.name,
-                        isDirectory: false
-                    )
-
-            guard !fileManager.fileExists(
-                atPath: destination.path
-            ) else {
-                return failureRecord(
-                    action: action,
-                    fileID: fileID,
-                    sourceURL: source,
-                    fileSize: file.size,
-                    message: "A file named \(file.name) already exists at the destination."
-                )
+            let folderValues = try destinationFolder.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard folderValues.isDirectory == true, folderValues.isSymbolicLink != true else {
+                throw ExecutionEngineError.invalidCleanupPolicy
             }
+            if file.isDirectory {
+                let current = try PackageContents.snapshot(at: source)
+                let attributes = try fileManager.attributesOfItem(atPath: source.path)
+                guard current.totalSize == file.size, attributes[.modificationDate] as? Date == file.modifiedAt else {
+                    throw FileVerificationError.changed
+                }
+            } else {
+                let current = try FileSnapshot.read(at: source)
+                guard current.size == file.size, current.modifiedAt == file.modifiedAt else {
+                    throw FileVerificationError.changed
+                }
+            }
+            let destination = availableDestination(in: destinationFolder, name: file.name)
 
             try fileManager.moveItem(
                 at: source,
@@ -490,18 +501,22 @@ actor ExecutionEngine {
         root: URL
     ) -> Bool {
 
-        let rootPath =
-            root.standardizedFileURL.path
+        candidate.standardizedFileURL.resolvingSymlinksInPath() == root.standardizedFileURL.resolvingSymlinksInPath()
+            || DeletionVerifier.isInside(candidate, root: root)
+    }
 
-        let candidatePath =
-            candidate
-                .standardizedFileURL
-                .path
-
-        return candidatePath == rootPath
-            || candidatePath.hasPrefix(
-                rootPath + "/"
-            )
+    private func availableDestination(in folder: URL, name: String) -> URL {
+        var candidate = folder.appendingPathComponent(name)
+        let original = URL(fileURLWithPath: name)
+        let ext = original.pathExtension
+        let stem = original.deletingPathExtension().lastPathComponent
+        var suffix = 2
+        while fileManager.fileExists(atPath: candidate.path) {
+            let nextName = "\(stem) (\(suffix))" + (ext.isEmpty ? "" : ".\(ext)")
+            candidate = folder.appendingPathComponent(nextName)
+            suffix += 1
+        }
+        return candidate
     }
 
     private func progressMessage(
@@ -546,9 +561,10 @@ actor ExecutionEngine {
     }
 }
 
-enum ExecutionEngineError: LocalizedError {
+nonisolated enum ExecutionEngineError: LocalizedError {
 
     case cannotAccessFolder
+    case invalidCleanupPolicy
 
     case emptyPlan
 
@@ -571,6 +587,9 @@ enum ExecutionEngineError: LocalizedError {
     var errorDescription: String? {
 
         switch self {
+
+        case .invalidCleanupPolicy:
+            return "The action conflicts with the tag or duplicate-retention rules. Scan this folder again."
 
         case .cannotAccessFolder:
             return "Orderly could not obtain write access to this folder."
