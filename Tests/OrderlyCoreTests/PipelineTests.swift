@@ -22,10 +22,46 @@ final class PipelineTests: XCTestCase {
                             isDirectory: false, isHidden: name.hasPrefix("."), uti: nil)
     }
 
-    private func plan(_ scan: DuplicateScan, root: URL, recommendations: [CleanupRecommendation] = []) -> CleanupPlan {
-        let candidates = ClutterAnalyzer().analyze(files: scan.files, duplicateGroups: scan.groups)
-        return CleanupPlanBuilder().buildPlan(folder: root, candidates: candidates,
-            modelPlan: ModelCleanupPlan(summary: "Fixture", recommendations: recommendations), files: scan.files)
+    private func plan(
+        _ scan: DuplicateScan,
+        root: URL,
+        decisions: ((CandidateEvidence) -> [ModelFileDecision])? = nil
+    ) -> CleanupPlan {
+        let candidates = ClutterAnalyzer().analyze(
+            files: scan.files,
+            duplicateGroups: scan.groups
+        )
+        let evidence = EvidenceEngine().buildEvidence(
+            candidates: candidates,
+            files: scan.files,
+            duplicateGroups: scan.groups,
+            rootFolder: root
+        )
+        let recommendations: [CleanupRecommendation]
+        if let decisions {
+            recommendations = zip(candidates, evidence).map { candidate, candidateEvidence in
+                CleanupRecommendation(
+                    candidateID: candidate.id.uuidString,
+                    title: "Fixture",
+                    explanation: "Fixture",
+                    fileDecisions: decisions(candidateEvidence),
+                    destinationFolderName: "",
+                    confidence: 1
+                )
+            }
+        } else {
+            recommendations = []
+        }
+
+        return CleanupPlanBuilder().buildPlan(
+            folder: root,
+            candidates: candidates,
+            modelPlan: ModelCleanupPlan(
+                summary: "Fixture",
+                recommendations: recommendations
+            ),
+            files: scan.files
+        )
     }
 
     func testExtensionRulesAndCompoundSuffixes() {
@@ -47,6 +83,75 @@ final class PipelineTests: XCTestCase {
         ]))
     }
 
+    func testCleanupPolicyReturnsCapabilitiesInsteadOfDecisions() async throws {
+        let root = try fixture()
+        let ordinary = try file("report.pdf", in: root, bytes: "ordinary")
+        let artifact = try file(".DS_Store", in: root, bytes: "artifact")
+        let installer = try file("setup.dmg", in: root, bytes: "installer")
+        let oldCopy = try file("old.txt", in: root, bytes: "duplicate", time: 1)
+        let newCopy = try file("new.txt", in: root, bytes: "duplicate", time: 2)
+        let duplicateScan = try await DuplicateDetector().findDuplicates(
+            in: [oldCopy, newCopy]
+        )
+        let duplicateLookup = FileLookup(files: duplicateScan.files)
+        let keeperID = try XCTUnwrap(duplicateScan.groups.first?.keeperID)
+        let keeper = try XCTUnwrap(duplicateLookup.file(withID: keeperID))
+        let redundant = try XCTUnwrap(
+            duplicateScan.files.first { $0.id != keeperID }
+        )
+
+        XCTAssertEqual(
+            CleanupPolicy.allowedDispositions(for: ordinary, root: root),
+            [.keep, .move, .review]
+        )
+        XCTAssertEqual(
+            CleanupPolicy.allowedDispositions(for: artifact, root: root),
+            [.keep, .trash, .review]
+        )
+        XCTAssertEqual(
+            CleanupPolicy.allowedDispositions(for: installer, root: root),
+            [.keep, .move, .trash, .review]
+        )
+        XCTAssertEqual(
+            CleanupPolicy.allowedDispositions(for: keeper, root: root),
+            [.keep]
+        )
+        XCTAssertEqual(
+            CleanupPolicy.allowedDispositions(for: redundant, root: root),
+            [.keep, .trash, .review]
+        )
+    }
+
+    func testOrdinaryAgentChoiceIsNotOverriddenByPlanner() async throws {
+        let root = try fixture()
+        let document = try file("report.pdf", in: root, bytes: "unique")
+        let scan = try await DuplicateDetector().findDuplicates(in: [document])
+
+        let keepPlan = plan(scan, root: root) { evidence in
+            evidence.files.map {
+                ModelFileDecision(
+                    fileReference: $0.reference,
+                    disposition: .keep,
+                    reason: "Leave this file in place."
+                )
+            }
+        }
+        XCTAssertTrue(keepPlan.actions.isEmpty)
+
+        let movePlan = plan(scan, root: root) { evidence in
+            evidence.files.map {
+                ModelFileDecision(
+                    fileReference: $0.reference,
+                    disposition: .move,
+                    reason: "Organize this document."
+                )
+            }
+        }
+        XCTAssertEqual(movePlan.actions.count, 1)
+        XCTAssertEqual(movePlan.actions[0].type, .move)
+        XCTAssertEqual(movePlan.actions[0].fileIDs, [document.id])
+    }
+
     func testThreeCopiesAcrossExtensionsKeepNewestAndOrganizeUnique() async throws {
         let root = try fixture()
         let old = try file("old.txt", in: root, time: 1)
@@ -58,7 +163,23 @@ final class PipelineTests: XCTestCase {
         XCTAssertEqual(scan.groups[0].files.count, 3)
         XCTAssertEqual(scan.groups[0].keeperID, newest.id)
         XCTAssertEqual(scan.files.filter { $0.tags.contains("SHA256 Duplicate") }.count, 3)
-        let result = plan(scan, root: root)
+        let result = plan(scan, root: root) { evidence in
+            evidence.files.map { file in
+                let disposition: FileDisposition
+                if file.allowedDispositions == [.keep] {
+                    disposition = .keep
+                } else if file.duplicateCopyCount > 1 {
+                    disposition = .trash
+                } else {
+                    disposition = .move
+                }
+                return ModelFileDecision(
+                    fileReference: file.reference,
+                    disposition: disposition,
+                    reason: "Fixture agent decision"
+                )
+            }
+        }
         XCTAssertEqual(Set(result.actions.filter { $0.type == .trash }.flatMap(\.fileIDs)), Set([old.id, middle.id]))
         let moves = result.actions.filter { $0.type == .move }
         XCTAssertEqual(moves.flatMap(\.fileIDs), [different.id])
@@ -75,7 +196,16 @@ final class PipelineTests: XCTestCase {
         let reversed = try await DuplicateDetector().findDuplicates(in: [artifact, other])
         XCTAssertEqual(first.groups[0].keeperID, artifact.id)
         XCTAssertEqual(first.groups[0].keeperID, reversed.groups[0].keeperID)
-        XCTAssertFalse(plan(first, root: root).actions.flatMap(\.fileIDs).contains(artifact.id))
+        let maliciousPlan = plan(first, root: root) { evidence in
+            evidence.files.map {
+                ModelFileDecision(
+                    fileReference: $0.reference,
+                    disposition: .trash,
+                    reason: "Attempt to trash every copy"
+                )
+            }
+        }
+        XCTAssertFalse(maliciousPlan.actions.flatMap(\.fileIDs).contains(artifact.id))
     }
 
     func testLargeDuplicateGroupRetainsOneAcrossBatches() async throws {
@@ -88,11 +218,40 @@ final class PipelineTests: XCTestCase {
         let evidence = EvidenceEngine().buildEvidence(candidates: candidates, files: scan.files,
                                                      duplicateGroups: scan.groups, rootFolder: root)
         for batch in evidence {
-            let decisions = batch.files.map { ModelFileDecision(fileReference: $0.reference,
-                disposition: $0.requiredDisposition ?? .move, reason: "Fixture") }
-            XCTAssertTrue(ModelPlanValidator().issues(decisions: decisions, files: batch.files).isEmpty)
+            let decisions = batch.files.map { file in
+                ModelFileDecision(
+                    fileReference: file.reference,
+                    disposition: file.allowedDispositions == [.keep] ? .keep : .trash,
+                    reason: "Fixture"
+                )
+            }
+            XCTAssertTrue(
+                ModelPlanValidator().issues(
+                    decisions: decisions,
+                    files: batch.files
+                ).isEmpty
+            )
         }
-        XCTAssertEqual(plan(scan, root: root).actions.filter { $0.type == .trash }.flatMap(\.fileIDs).count, 36)
+
+        let result = plan(scan, root: root) { evidence in
+            let containsKeeper = evidence.files.contains {
+                $0.allowedDispositions == [.keep]
+            }
+            return evidence.files.enumerated().map { index, file in
+                let shouldKeep = file.allowedDispositions == [.keep]
+                    || (!containsKeeper && index == 0)
+                return ModelFileDecision(
+                    fileReference: file.reference,
+                    disposition: shouldKeep ? .keep : .trash,
+                    reason: "Retain at least one copy per candidate batch"
+                )
+            }
+        }
+        let trashCount = result.actions
+            .filter { $0.type == .trash }
+            .flatMap(\.fileIDs)
+            .count
+        XCTAssertEqual(trashCount, files.count - candidates.count)
     }
 
     func testEmptyFilesAndMissingDates() async throws {
@@ -104,19 +263,38 @@ final class PipelineTests: XCTestCase {
         let scan = try await DuplicateDetector().findDuplicates(in: [undated, second])
         XCTAssertEqual(scan.groups.count, 1)
         XCTAssertNil(scan.groups[0].keeperID)
+        for file in scan.files {
+            XCTAssertEqual(
+                CleanupPolicy.allowedDispositions(for: file, root: root),
+                [.keep, .review]
+            )
+        }
         XCTAssertTrue(plan(scan, root: root).actions.isEmpty)
     }
 
-    func testOnlyRegenerableArtifactsAreDeletedWithoutModelInstallerAdvice() async throws {
+    func testArtifactTrashProposalsAreHonoredWithoutDeletingOtherFiles() async throws {
         let root = try fixture()
         let names = [".DS_Store", "thumbs.db", "work.tmp", "work.log", "work.bak", "._photo.jpg", "installer.dmg", "key.ppk"]
         let files = try names.enumerated().map { try file($0.element, in: root, bytes: String(repeating: "x", count: $0.offset + 1)) }
         let scan = try await DuplicateDetector().findDuplicates(in: files)
-        let deleted = plan(scan, root: root).actions.filter { $0.type == .trash }.flatMap(\.fileIDs)
+        let result = plan(scan, root: root) { evidence in
+            evidence.files.map { file in
+                let disposition: FileDisposition = [".ds_store", "thumbs.db"]
+                    .contains(file.name.lowercased()) ? .trash : .review
+                return ModelFileDecision(
+                    fileReference: file.reference,
+                    disposition: disposition,
+                    reason: "Fixture agent decision"
+                )
+            }
+        }
+        let deleted = result.actions
+            .filter { $0.type == .trash }
+            .flatMap(\.fileIDs)
         XCTAssertEqual(Set(deleted), Set(files.prefix(2).map(\.id)))
     }
 
-    func testMaliciousRecommendationsCannotDeleteDocumentsOrChooseOutsideDestination() throws {
+    func testDisallowedTrashProposalIsDroppedInsteadOfOverridden() throws {
         let root = try fixture()
         let doc = try file("report.pdf", in: root)
         let candidate = AnalysisCandidate(id: UUID(), type: .grouping, fileIDs: [doc.id], confidence: 1, reason: "Fixture")
@@ -125,8 +303,24 @@ final class PipelineTests: XCTestCase {
             fileDecisions: [ModelFileDecision(fileReference: "F1", disposition: .trash, reason: "Fixture")],
             destinationFolderName: "../../outside", confidence: 1)])
         let result = CleanupPlanBuilder().buildPlan(folder: root, candidates: [candidate], modelPlan: model, files: [doc])
-        XCTAssertEqual(result.actions.first?.type, .move)
-        XCTAssertEqual(result.actions.first?.destination, root.appendingPathComponent("Documents", isDirectory: true))
+        XCTAssertTrue(result.actions.isEmpty)
+    }
+
+    func testMoveProposalForAlreadyOrganizedFileIsANoOp() async throws {
+        let root = try fixture()
+        let organized = try file("Documents/report.pdf", in: root, bytes: "unique")
+        let scan = try await DuplicateDetector().findDuplicates(in: [organized])
+        let result = plan(scan, root: root) { evidence in
+            evidence.files.map {
+                ModelFileDecision(
+                    fileReference: $0.reference,
+                    disposition: .move,
+                    reason: "Already organized"
+                )
+            }
+        }
+
+        XCTAssertTrue(result.actions.isEmpty)
     }
 
     func testInstallerAdviceIsHonoredAndAlreadyOrganizedFilesStayPut() throws {

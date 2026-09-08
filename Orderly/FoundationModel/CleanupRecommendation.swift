@@ -1,6 +1,6 @@
 import Foundation
 
-enum FileDisposition: String, Codable, Sendable {
+enum FileDisposition: String, Codable, Sendable, Hashable {
     case keep
     case trash
     case move

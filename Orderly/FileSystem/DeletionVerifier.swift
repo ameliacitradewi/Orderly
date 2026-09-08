@@ -9,7 +9,7 @@ nonisolated struct DeletionVerifier: Sendable {
 
     static func verify(file: FileMetadata, lookup: FileLookup, root: URL) throws {
         guard isInside(file.url, root: root),
-              CleanupPolicy.resolve(.trash, for: file, root: root) == .trash else {
+              CleanupPolicy.allowedDispositions(for: file, root: root).contains(.trash) else {
             throw FileVerificationError.keeperUnavailable
         }
         if let group = file.duplicateGroupID {

@@ -111,7 +111,7 @@ final class QwenModelSession {
             print("Qwen decision error:", error.localizedDescription)
 
             // Invalid larger batches get a clean request with less context. A single
-            // invalid result falls back to the existing deterministic safety rules.
+            // invalid result falls back to the safest action in its policy allowlist.
             if files.count > 1 {
                 let middle = files.count / 2
                 let left = try await decide(
@@ -129,10 +129,13 @@ final class QwenModelSession {
             }
 
             let file = files[0]
+            let fallbackDisposition = file.allowedDispositions.contains(.review)
+                ? FileDisposition.review
+                : file.allowedDispositions.first ?? .keep
             let decision = ModelFileDecision(
                 fileReference: file.reference,
-                disposition: file.requiredDisposition ?? .move,
-                reason: "Applied the extension and verified duplicate rules."
+                disposition: fallbackDisposition,
+                reason: "Used the safest available fallback from the policy allowlist."
             )
             print(
                 "Fallback decision:",
@@ -156,7 +159,7 @@ final class QwenModelSession {
             size: \(file.size)
             modified: \(file.modifiedAt?.formatted(.iso8601) ?? "unknown")
             relativePath: \(PromptText.quoted(file.relativePath, bytes: 120))
-            requiredDisposition: \(file.requiredDisposition?.rawValue ?? "none")
+            allowedDispositions: \(file.allowedDispositions.map(\.rawValue).joined(separator: ","))
             installerCandidate: \(file.isInstallerCandidate)
             SHA256 copies: \(file.duplicateCopyCount)
             duplicateKeeper: \(PromptText.quoted(file.duplicateKeeperName ?? "none", bytes: 64))
@@ -179,13 +182,13 @@ final class QwenModelSession {
         - review
 
         Rules:
-        - Respect requiredDisposition exactly when it is not "none".
+        - Choose only a disposition listed in allowedDispositions for that file.
         - SHA256-identical files are verified duplicates across the whole duplicate group.
         - Keep the designated newest copy and trash other verified copies, even when the keeper is outside this batch.
         - Similar names are not duplicates.
         - Never infer file contents or whether an app is installed.
         - Never invent file references.
-        - A file with requiredDisposition "none" is an installer candidate: choose only "trash" or "move".
+        - Treat allowedDispositions as constraints, not as a recommendation.
         - Return valid JSON only. Do not use Markdown fences or add commentary.
 
         Candidate type: \(candidateType.rawValue)

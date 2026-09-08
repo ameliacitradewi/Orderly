@@ -9,8 +9,28 @@ let package = Package(
     products: [.library(name: "OrderlyCore", targets: ["OrderlyCore"])],
     targets: [
         .target(name: "OrderlyCore", path: "Orderly",
-                exclude: ["AI", "App", "Assets.xcassets", "DesignSystem", "UI"],
-                sources: ["FileSystem", "FoundationModel", "Intelligence", "Models"],
+                exclude: [
+                    "AI/ContectBuilder.swift",
+                    "AI/QwenMLXService.swift",
+                    "AI/QwenModelManager.swift",
+                    "AI/QwenModelSession.swift",
+                    "AI/QwenSmokeTest.swift",
+                    "AI/Untitled.swift",
+                    "App",
+                    "Assets.xcassets",
+                    "DesignSystem",
+                    "UI"
+                ],
+                sources: [
+                    "Agent",
+                    "AI/LLMService.swift",
+                    "Content",
+                    "FileSystem",
+                    "FoundationModel",
+                    "Intelligence",
+                    "Models",
+                    "Tools"
+                ],
                 swiftSettings: [.defaultIsolation(MainActor.self)]),
         .testTarget(name: "OrderlyCoreTests", dependencies: ["OrderlyCore"], path: "Tests/OrderlyCoreTests")
     ],
