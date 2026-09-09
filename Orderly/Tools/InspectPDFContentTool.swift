@@ -11,7 +11,8 @@ struct InspectPDFContentTool {
 
     func execute(
         file: FileMetadata,
-        fileReference: String,
+        localReference: String?,
+        globalReference: String,
         candidateID: UUID,
         analyzedFolder: URL
     ) throws -> AgentObservation {
@@ -25,11 +26,14 @@ struct InspectPDFContentTool {
 
         let inspected = try contentInspectionService.inspectPDF(
             at: file.url,
-            fileReference: fileReference,
+            fileID: file.id,
+            localReference: localReference,
+            globalReference: globalReference,
             maxExcerptCharacters: AgentContextBudget.maxContentExcerptCharacters
         )
         let content = """
-        reference=\(inspected.fileReference)
+        localReference=\(inspected.localReference ?? "outsideCurrentCandidate")
+        globalReference=\(inspected.globalReference)
         contentType=\(inspected.contentType)
         pages=\(inspected.pageCount.map(String.init) ?? "unknown")
         extractedCharacters=\(inspected.extractedCharacterCount)
@@ -42,7 +46,8 @@ struct InspectPDFContentTool {
             type: .content,
             candidateID: candidateID,
             content: content,
-            contentObservation: inspected
+            contentObservation: inspected,
+            globalReferences: [globalReference]
         )
     }
 
