@@ -103,6 +103,7 @@ struct AgentContextBuilder {
             : "The candidate type describes why deterministic analysis selected it; still ground every claim in observations."
 
         let actionSchema: String
+        let referenceSchema: String
         let availableActions: String
         if hasCandidateOverview {
             var actions: [AgentAction] = [.inspectFile, .compareFiles]
@@ -120,6 +121,7 @@ struct AgentContextBuilder {
             }
             actions.append(.finishCandidate)
             actionSchema = actions.map(\.rawValue).joined(separator: "|")
+            referenceSchema = "[\"copy the exact required F/G reference(s) for the chosen action\"]"
 
             let localPDFAction = availableLocalPDFs.isEmpty ? "" : """
             inspectPDFContent
@@ -176,6 +178,7 @@ struct AgentContextBuilder {
             """
         } else {
             actionSchema = AgentAction.inspectCandidate.rawValue
+            referenceSchema = "[]"
             availableActions = """
             inspectCandidate
             - Get an overview of every file in this candidate.
@@ -208,6 +211,8 @@ struct AgentContextBuilder {
         PROGRESS CONSTRAINTS:
         - \(overviewRule)
         - \(investigationRule)
+        - fileReferences may be [] only for inspectCandidate and finishCandidate. Every other tool action MUST include the exact F/G references required by that action.
+        - If your reason names a reference such as F1 or G1, copy that same reference into fileReferences when the chosen action requires it.
         - Never repeat a tool action with the same fileReferences unless validator/tool feedback explicitly says the action can be retried.
         - \(iterationRule)
         - At most 8 investigation steps are allowed for this candidate.
@@ -251,7 +256,7 @@ struct AgentContextBuilder {
         {
           "action": "\(actionSchema)",
           "candidateID": "\(candidate.id.uuidString)",
-          "fileReferences": [],
+          "fileReferences": \(referenceSchema),
           "reason": "why this is the best next step",
           "finding": null
         }
