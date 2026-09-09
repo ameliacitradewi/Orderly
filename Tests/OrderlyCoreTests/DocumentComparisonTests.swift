@@ -64,8 +64,8 @@ final class DocumentComparisonTests: XCTestCase {
         let secondID = UUID()
         let first = FileMetadata(
             id: firstID,
-            url: root.appendingPathComponent("proposal-v1.pdf"),
-            name: "proposal-v1.pdf",
+            url: root.appendingPathComponent("01-proposal-v1.pdf"),
+            name: "01-proposal-v1.pdf",
             extensionName: "pdf",
             size: 1_000,
             createdAt: nil,
@@ -77,8 +77,8 @@ final class DocumentComparisonTests: XCTestCase {
         )
         let second = FileMetadata(
             id: secondID,
-            url: root.appendingPathComponent("proposal-final.pdf"),
-            name: "proposal-final.pdf",
+            url: root.appendingPathComponent("02-proposal-final.pdf"),
+            name: "02-proposal-final.pdf",
             extensionName: "pdf",
             size: 1_100,
             createdAt: nil,
