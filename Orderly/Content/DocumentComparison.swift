@@ -143,6 +143,8 @@ final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
 
         If truncatedA or truncatedB is true, remember that you are seeing only a bounded excerpt of that document. Do not claim a revision solely from shared boilerplate or a matching opening section. Use uncertain when the available excerpt does not support a reliable semantic conclusion.
         Do not infer exact duplication; SHA256 verification is handled elsewhere.
+        This comparison does not establish temporal or version ordering. Even if text or filenames contain words such as final, draft, v1, v2, newer, or older, do not state that one document is later/newer/older/final than the other.
+        If relationship is sameDocumentRevision, write the summary symmetrically, for example: "The documents appear to be revisions of the same underlying document." Do not say that document A is a revision of document B or vice versa.
 
         Return JSON only:
         {"relationship":"sameDocumentRevision|sameTopic|unrelated|uncertain","summary":"short evidence-based explanation","confidence":0.0}
