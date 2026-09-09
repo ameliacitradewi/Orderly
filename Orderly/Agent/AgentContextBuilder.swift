@@ -255,6 +255,7 @@ struct AgentContextBuilder {
             compareDocumentContent
             - Compare exactly two distinct G references whose PDF content has already been inspected.
             - Allowed uncompared pairs: \(Self.renderPairs(uncomparedDocumentPairs)).
+            - fileReferences MUST copy the G references from an allowed pair above; never put F references in this G-only action.
             - At least one compared file must belong to the current candidate.
             - The tool combines deterministic text similarity with Qwen semantic analysis.
             - Its result is semantic evidence, not exact-duplicate verification.
@@ -265,6 +266,7 @@ struct AgentContextBuilder {
             compareImageContent
             - Compare exactly two distinct G references whose image content has already been inspected.
             - Allowed uncompared pairs: \(Self.renderPairs(uncomparedImagePairs)).
+            - fileReferences MUST copy the G references from an allowed pair above; never put F references in this G-only action.
             - At least one compared file must belong to the current candidate.
             - The tool combines Apple Vision feature-print similarity with Qwen interpretation of the bounded image semantics.
             - sameImageVariant, sameScene, and sameSubject are semantic relationships only; none proves an exact duplicate.
@@ -343,6 +345,7 @@ struct AgentContextBuilder {
         - \(overviewRule)
         - \(investigationRule)
         - fileReferences may be [] only for inspectCandidate and finishCandidate. Every other tool action MUST include the exact F/G references required by that action.
+        - compareDocumentContent and compareImageContent are G-only actions. Copy the exact G references from their Allowed uncompared pairs; do not use F aliases for those actions.
         - If your reason names a reference such as F1 or G1, copy that same reference into fileReferences when the chosen action requires it.
         - Never repeat a tool action with the same fileReferences unless validator/tool feedback explicitly says the action can be retried.
         - For pairwise comparison actions, reversed order is still the same pair.
@@ -359,6 +362,7 @@ struct AgentContextBuilder {
         - Proposals must use this candidate's F references only. G references and outside files are context, never action targets.
         - External observations may be cited by observation ID when they were gathered during this candidate investigation.
         - Retrieval scores, similar filenames, timestamps, sizes, categories, and raw Vision similarity do not prove a shared project, session, revision, or semantic relationship.
+        - A category batch does not mean all files share a topic/project/subject. Never say all candidate files are semantically related unless cited semantic comparisons connect every candidate file; otherwise describe only the inspected/compared subset and leave unsupported files as grouping/review.
         - relationship exactDuplicate requires cited trusted comparison evidence with verifiedDuplicate=true.
         - relationship related requires either: (a) a cited documentComparison with sameDocumentRevision or sameTopic, or (b) a cited imageSemanticComparison with sameImageVariant, sameScene, or sameSubject. The comparison must include a current-candidate file.
         - A semantic comparison result of unrelated or uncertain cannot justify relationship related.
@@ -374,6 +378,8 @@ struct AgentContextBuilder {
         - finding.candidateID must equal \(candidate.id.uuidString).
         - Every evidence item must cite a factual observation id shown below; error observations are feedback only and cannot be cited.
         - One observation may support multiple distinct evidence descriptions. Do not repeat an identical observationID + description pair.
+        - Keep the finishCandidate JSON compact and complete: summary <= 180 characters; each evidence description <= 180 characters; each proposal reason <= 140 characters. Prefer fewer strong evidence items over redundant metadata citations.
+        - Syntactic completeness is mandatory. Never stop mid-array or mid-object; shorten prose before omitting required proposals or closing braces.
         - confidence must be between 0.0 and 1.0.
 
         Relationships:
