@@ -34,7 +34,8 @@ enum FastVLMSmokeTest {
         print("contentType=", evidence.contentType)
 
         let analyzer = StructuredImageSemanticAnalyzer(
-            visionModel: FastVLMVisionService()
+            visionModel: FastVLMVisionService(),
+            debugRawResponse: true
         )
         let semantic = try await analyzer.analyze(
             imageURL: imageURL,
