@@ -105,7 +105,7 @@ final class OrderlyAgent {
             print("File references:", decision.fileReferences)
 
             if decision.action == .finishCandidate {
-                guard let finding = decision.finding else {
+                guard var finding = decision.finding else {
                     throw AgentError.finishWithoutFinding
                 }
                 guard finding.candidateID == candidate.id else {
@@ -120,12 +120,35 @@ final class OrderlyAgent {
                     throw AgentToolError.unknownCandidate
                 }
 
-                let issues = planValidator.validate(
+                var issues = planValidator.validate(
                     finding: finding,
                     candidate: candidate,
                     evidence: evidence,
                     observations: state.observations
                 )
+
+                // Natural-language directionality is presentation, not a reason to
+                // spend another expensive agent iteration when the structured
+                // comparison already proves only a symmetric revision relationship.
+                // Repair only this single issue, never destructive proposals or any
+                // other validation failure.
+                if Self.onlyUnsupportedRevisionOrdering(issues),
+                   !finding.proposals.contains(where: { $0.disposition == .trash }) {
+                    let groundedFinding = Self.canonicalizeRevisionFinding(finding)
+                    let groundedIssues = planValidator.validate(
+                        finding: groundedFinding,
+                        candidate: candidate,
+                        evidence: evidence,
+                        observations: state.observations
+                    )
+                    if groundedIssues.isEmpty {
+                        print("======== AGENT FINDING LANGUAGE REPAIR ========")
+                        print("Replaced unsupported revision directionality with symmetric wording.")
+                        finding = groundedFinding
+                        issues = []
+                    }
+                }
+
                 if !issues.isEmpty {
                     print("======== AGENT FINDING REJECTED ========")
                     for issue in issues {
@@ -353,6 +376,35 @@ final class OrderlyAgent {
         guard decision.candidateID == currentCandidate.id else {
             throw AgentError.wrongCandidate
         }
+    }
+
+    private static func onlyUnsupportedRevisionOrdering(_ issues: [String]) -> Bool {
+        issues.count == 1
+            && issues[0].contains("symmetric relationship only")
+    }
+
+    private static func canonicalizeRevisionFinding(
+        _ finding: AgentFinding
+    ) -> AgentFinding {
+        AgentFinding(
+            candidateID: finding.candidateID,
+            relationship: finding.relationship,
+            summary: "The candidate file and the compared document appear to be revisions of the same underlying document.",
+            evidence: finding.evidence.map {
+                AgentEvidenceReference(
+                    observationID: $0.observationID,
+                    description: "The cited document comparison classified the files as revisions of the same underlying document."
+                )
+            },
+            proposals: finding.proposals.map { proposal in
+                AgentFileProposal(
+                    fileReference: proposal.fileReference,
+                    disposition: proposal.disposition,
+                    reason: "The files have a revision relationship, but their ordering is not established; review the evidence before taking any irreversible action."
+                )
+            },
+            confidence: finding.confidence
+        )
     }
 
     private static func render(_ references: [String]) -> String {
