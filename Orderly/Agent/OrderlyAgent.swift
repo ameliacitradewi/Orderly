@@ -125,6 +125,10 @@ final class OrderlyAgent {
                         print("-", issue)
                     }
 
+                    let expectedReferences = evidence.files
+                        .map(\.reference)
+                        .sorted()
+                        .joined(separator: ", ")
                     let feedback = AgentObservation(
                         type: .error,
                         candidateID: candidate.id,
@@ -134,6 +138,8 @@ final class OrderlyAgent {
                         Issues:
                         \(issues.map { "- \($0)" }.joined(separator: "\n"))
 
+                        When finishing this candidate, proposals must contain exactly one entry for each of these local references: \(expectedReferences).
+                        Do not propose actions for G references or outside files.
                         Revise the finding using factual tool observations. Error observations are feedback only and cannot be cited as evidence. Gather additional evidence if necessary.
                         """
                     )
@@ -209,17 +215,63 @@ final class OrderlyAgent {
                 // Keep infrastructure errors fatal and retain the iteration limit.
                 switch error {
                 case .wrongFileCount, .invalidFileReference, .unobservedGlobalReference, .comparisonOutsideCandidate:
-                    let validReferences = environment.evidenceByCandidate[candidate.id]?
-                        .files.map(\.reference).joined(separator: ", ") ?? "none"
+                    let localReferences = environment.evidenceByCandidate[candidate.id]?
+                        .files.map(\.reference).sorted() ?? []
+                    let visibleGlobalReferences = environment.visibleGlobalReferences(
+                        candidateID: candidate.id,
+                        observations: state.observations
+                    ).sorted()
+                    let localGlobalReferences = Set(
+                        environment.evidenceByCandidate[candidate.id]?
+                            .files.compactMap {
+                                environment.globalReferenceByFileID[$0.fileID]
+                            } ?? []
+                    )
+                    let observedExternalPDFReferences = Set(
+                        state.observations
+                            .filter {
+                                $0.candidateID == candidate.id && $0.type != .error
+                            }
+                            .flatMap { $0.pdfGlobalReferences ?? [] }
+                    )
+                    .subtracting(localGlobalReferences)
+                    .sorted()
+                    let inspectedPDFReferences = Set(
+                        state.observations
+                            .filter {
+                                $0.candidateID == candidate.id && $0.type == .content
+                            }
+                            .compactMap(\.contentObservation)
+                            .map(\.globalReference)
+                    ).sorted()
+
+                    let actionSpecificRepair: String
+                    switch decision.action {
+                    case .inspectFile, .inspectPDFContent, .findRelatedFiles:
+                        actionSpecificRepair = "Retry with exactly one local F reference from: \(Self.render(localReferences))."
+                    case .compareFiles:
+                        actionSpecificRepair = "Retry with exactly two distinct local F references from: \(Self.render(localReferences))."
+                    case .inspectGlobalFile:
+                        actionSpecificRepair = "Retry with exactly one already-observed G reference from: \(Self.render(visibleGlobalReferences))."
+                    case .inspectGlobalPDFContent:
+                        actionSpecificRepair = "Retry with exactly one observed external PDF G reference from: \(Self.render(observedExternalPDFReferences))."
+                    case .compareGlobalFiles:
+                        actionSpecificRepair = "Retry with exactly two distinct observed G references from: \(Self.render(visibleGlobalReferences)); at least one must belong to the current candidate."
+                    case .compareDocumentContent:
+                        actionSpecificRepair = "Retry with exactly two distinct inspected PDF G references from: \(Self.render(inspectedPDFReferences)); at least one must belong to the current candidate."
+                    case .inspectCandidate, .finishCandidate:
+                        actionSpecificRepair = "Choose an available action using the exact reference shape shown in the prompt."
+                    }
+
                     observation = AgentObservation(
                         type: .error,
                         candidateID: candidate.id,
                         content: """
                         Tool request failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
-                        Valid file references for this candidate: \(validReferences).
-                        compareFiles requires two distinct F references; compareGlobalFiles and compareDocumentContent require two distinct observed G references including a current candidate file.
-                        inspectFile, inspectPDFContent, and findRelatedFiles require one F reference. inspectGlobalFile and inspectGlobalPDFContent require one observed G reference. Use G references from this candidate's observations, never paths or guessed IDs.
+                        \(actionSpecificRepair)
+                        Valid file references for this candidate: \(Self.render(localReferences)).
+                        Observed global references: \(Self.render(visibleGlobalReferences)).
                         Correct the arguments and retry. This failed request is not factual evidence.
                         """
                     )
@@ -294,5 +346,9 @@ final class OrderlyAgent {
         guard decision.candidateID == currentCandidate.id else {
             throw AgentError.wrongCandidate
         }
+    }
+
+    private static func render(_ references: [String]) -> String {
+        references.isEmpty ? "none" : references.joined(separator: ", ")
     }
 }
