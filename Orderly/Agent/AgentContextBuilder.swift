@@ -53,8 +53,25 @@ struct AgentContextBuilder {
             .sorted()
 
         let contentGlobalReferences = inspectedGlobalPDFs.sorted()
-        let canCompareDocumentContent = contentGlobalReferences.count >= 2
-            && !Set(contentGlobalReferences).isDisjoint(with: currentCandidateGlobalReferences)
+        let comparedDocumentPairKeys = Set(
+            candidateObservations.compactMap { observation -> String? in
+                guard observation.type == .documentComparison,
+                      let references = observation.documentComparison?.globalReferences,
+                      references.count == 2 else {
+                    return nil
+                }
+                return Self.documentPairKey(references)
+            }
+        )
+        let eligibleDocumentPairs = Self.documentPairs(
+            references: contentGlobalReferences,
+            currentCandidateReferences: currentCandidateGlobalReferences
+        )
+        let uncomparedDocumentPairs = eligibleDocumentPairs.filter {
+            !comparedDocumentPairKeys.contains(Self.documentPairKey($0))
+        }
+        let canCompareDocumentContent = !uncomparedDocumentPairs.isEmpty
+        let hasCompletedDocumentComparison = !comparedDocumentPairKeys.isEmpty
 
         let overviewRule = hasCandidateOverview
             ? "inspectCandidate has already been used and is no longer available."
@@ -79,7 +96,11 @@ struct AgentContextBuilder {
             }
             if canCompareDocumentContent {
                 guidance.append(
-                    "At least two inspected PDF contents are available. Use compareDocumentContent when a semantic relationship or revision question remains unresolved."
+                    "Uncompared inspected PDF pairs remain. Use compareDocumentContent only when a semantic relationship or revision question remains unresolved."
+                )
+            } else if hasCompletedDocumentComparison {
+                guidance.append(
+                    "Semantic comparison already exists for every eligible inspected PDF pair. Do not call compareDocumentContent again for those pairs; use the existing documentComparison observation, investigate a different unresolved question, or finish."
                 )
             }
             if guidance.isEmpty {
@@ -140,10 +161,11 @@ struct AgentContextBuilder {
             let documentComparisonAction = canCompareDocumentContent ? """
             compareDocumentContent
             - Compare exactly two distinct G references whose PDF content has already been inspected.
-            - Inspected content references: \(contentGlobalReferences.joined(separator: ", ")).
+            - Allowed uncompared pairs: \(Self.renderPairs(uncomparedDocumentPairs)).
             - At least one compared file must belong to the current candidate.
             - The tool combines deterministic text similarity with Qwen semantic analysis.
             - Its result is semantic evidence, not exact-duplicate verification.
+            - Never repeat a pair that already has a documentComparison observation, even in reversed order.
             """ : ""
 
             availableActions = """
@@ -214,6 +236,7 @@ struct AgentContextBuilder {
         - fileReferences may be [] only for inspectCandidate and finishCandidate. Every other tool action MUST include the exact F/G references required by that action.
         - If your reason names a reference such as F1 or G1, copy that same reference into fileReferences when the chosen action requires it.
         - Never repeat a tool action with the same fileReferences unless validator/tool feedback explicitly says the action can be retried.
+        - For pairwise comparison actions, reversed order is still the same pair.
         - \(iterationRule)
         - At most 8 investigation steps are allowed for this candidate.
         - F references are local to this candidate. G references identify files within this scan snapshot only.
@@ -230,6 +253,7 @@ struct AgentContextBuilder {
         - relationship exactDuplicate requires cited trusted comparison evidence with verifiedDuplicate=true.
         - relationship related requires a cited documentComparison observation whose semanticRelationship is sameDocumentRevision or sameTopic and whose comparison includes a current-candidate file.
         - A documentComparison result of unrelated or uncertain cannot justify relationship related.
+        - sameDocumentRevision proves a symmetric revision relationship only. It does not establish which file is later, newer, older, previous, final, or the revision of the other. Unless a trusted structured observation explicitly establishes ordering, say that the files appear to be revisions of the same underlying document.
         - Revision evidence is not permission to trash a unique file. Follow allowedDispositions and prefer review when deletion safety is not established.
         - Use only facts obtained through observations.
         - Choose only a disposition listed in that file's observed allowedDispositions.
@@ -316,5 +340,33 @@ struct AgentContextBuilder {
         }
 
         return rendered.joined(separator: "\n\n")
+    }
+
+    private static func documentPairs(
+        references: [String],
+        currentCandidateReferences: Set<String>
+    ) -> [[String]] {
+        guard references.count >= 2 else { return [] }
+
+        var pairs: [[String]] = []
+        for leftIndex in 0..<(references.count - 1) {
+            for rightIndex in (leftIndex + 1)..<references.count {
+                let pair = [references[leftIndex], references[rightIndex]]
+                if !Set(pair).isDisjoint(with: currentCandidateReferences) {
+                    pairs.append(pair)
+                }
+            }
+        }
+        return pairs
+    }
+
+    private static func documentPairKey(_ references: [String]) -> String {
+        references.sorted().joined(separator: "|")
+    }
+
+    private static func renderPairs(_ pairs: [[String]]) -> String {
+        pairs.isEmpty
+            ? "none"
+            : pairs.map { $0.joined(separator: " + ") }.joined(separator: "; ")
     }
 }
