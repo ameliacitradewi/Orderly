@@ -33,8 +33,13 @@ enum FastVLMSmokeTest {
         print("frames=", evidence.frameCount)
         print("contentType=", evidence.contentType)
 
+        // FastVLM is the visual perceiver. Qwen only receives FastVLM's bounded text
+        // description plus trusted raster metadata and converts that evidence into the
+        // typed schema used by Orderly. Qwen never receives the image path as a tool input
+        // and neither model is allowed to choose a cleanup disposition here.
         let analyzer = StructuredImageSemanticAnalyzer(
             visionModel: FastVLMVisionService(),
+            textModel: QwenMLXService(),
             debugRawResponse: true
         )
         let semantic = try await analyzer.analyze(
@@ -42,7 +47,7 @@ enum FastVLMSmokeTest {
             evidence: evidence
         )
 
-        print("======== FASTVLM SEMANTIC OBSERVATION ========")
+        print("======== HYBRID IMAGE SEMANTIC OBSERVATION ========")
         print("contentKind=", semantic.contentKind.rawValue)
         print("confidence=", semantic.confidence)
         print("summary=", semantic.summary)
@@ -70,7 +75,8 @@ enum FastVLMSmokeTest {
         }
 
         print("======== REAL FASTVLM IMAGE SMOKE PASS ========")
-        print("Model:", FastVLMModelManager.modelName)
+        print("Visual model:", FastVLMModelManager.modelName)
+        print("Structuring model:", QwenModelManager.modelName)
         print("Content kind:", semantic.contentKind.rawValue)
         print("Confidence:", semantic.confidence)
         print("Summary:", semantic.summary)
@@ -215,13 +221,13 @@ enum FastVLMSmokeError: LocalizedError {
         case .cannotCreateFixture:
             return "Could not create the synthetic image fixture."
         case .identityMismatch:
-            return "FastVLM semantic evidence lost the trusted file identity."
+            return "Hybrid image semantic evidence lost the trusted file identity."
         case .lowConfidence:
-            return "FastVLM returned confidence below the smoke-test floor."
+            return "Hybrid image semantic analysis returned confidence below the smoke-test floor."
         case .unexpectedContentKind(let kind):
-            return "FastVLM classified the screenshot-like fixture as \(kind)."
+            return "Hybrid image semantic analysis classified the screenshot-like fixture as \(kind)."
         case .emptySummary:
-            return "FastVLM returned an empty visual summary."
+            return "Hybrid image semantic analysis returned an empty visual summary."
         }
     }
 }
