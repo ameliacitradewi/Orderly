@@ -151,6 +151,14 @@ struct AgentPlanValidator {
         }
 
         if finding.relationship == .related,
+           hasRelatedImageComparison,
+           finding.proposals.contains(where: { $0.disposition == .trash }) {
+            issues.append(
+                "Visual similarity cannot authorize trash; image-related findings must remain non-destructive unless exact duplicate safety is established separately."
+            )
+        }
+
+        if finding.relationship == .related,
            hasSameDocumentRevisionObservation,
            finding.assertsUnsupportedRevisionOrdering {
             issues.append(
