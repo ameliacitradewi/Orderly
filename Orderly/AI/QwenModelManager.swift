@@ -20,6 +20,7 @@ actor QwenModelManager {
         }
 
         print("======== LOADING QWEN ========")
+        let startedAt = Date()
 
         let task = Task<ModelContainer, Error> {
             try await #huggingFaceLoadModelContainer(
@@ -30,6 +31,11 @@ actor QwenModelManager {
 
         do {
             let container = try await task.value
+            let duration = Date().timeIntervalSince(startedAt)
+            await LocalModelRuntimeMetrics.shared.recordQwenLoad(
+                seconds: duration,
+                residentBytes: ResidentMemorySampler.currentBytes()
+            )
             print("======== QWEN READY ========")
             print("Model:", Self.modelName)
             return container
@@ -52,6 +58,7 @@ actor QwenModelManager {
 
             try Task.checkCancellation()
             let model = try await self.modelContainer()
+            let startedAt = Date()
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
@@ -60,7 +67,11 @@ actor QwenModelManager {
                 ),
                 additionalContext: ["enable_thinking": false]
             )
-            return try await session.respond(to: prompt)
+            let response = try await session.respond(to: prompt)
+            await LocalModelRuntimeMetrics.shared.recordQwenInference(
+                seconds: Date().timeIntervalSince(startedAt)
+            )
+            return response
         }
 
         inferenceTail = Task {
