@@ -8,7 +8,9 @@ enum ObservationType: String, Codable, Sendable {
     case discovery
     case documentComparison
     case imageEvidence
+    case imageContent
     case imageComparison
+    case imageSemanticComparison
     case error
 }
 
@@ -22,7 +24,9 @@ struct AgentObservation: Codable, Sendable {
     let comparison: FileComparisonObservation?
     let documentComparison: DocumentComparisonObservation?
     let imageEvidence: ImageEvidenceObservation?
+    let imageSemantic: ImageSemanticObservation?
     let imageComparison: DeterministicImageComparison?
+    let imageSemanticComparison: ImageComparisonObservation?
     let pdfFileReferences: [String]?
     let pdfGlobalReferences: [String]?
     let imageFileReferences: [String]?
@@ -40,7 +44,9 @@ struct AgentObservation: Codable, Sendable {
         comparison: FileComparisonObservation? = nil,
         documentComparison: DocumentComparisonObservation? = nil,
         imageEvidence: ImageEvidenceObservation? = nil,
+        imageSemantic: ImageSemanticObservation? = nil,
         imageComparison: DeterministicImageComparison? = nil,
+        imageSemanticComparison: ImageComparisonObservation? = nil,
         pdfFileReferences: [String]? = nil,
         pdfGlobalReferences: [String]? = nil,
         imageFileReferences: [String]? = nil,
@@ -57,7 +63,9 @@ struct AgentObservation: Codable, Sendable {
         self.comparison = comparison
         self.documentComparison = documentComparison
         self.imageEvidence = imageEvidence
+        self.imageSemantic = imageSemantic
         self.imageComparison = imageComparison
+        self.imageSemanticComparison = imageSemanticComparison
         self.pdfFileReferences = pdfFileReferences
         self.pdfGlobalReferences = pdfGlobalReferences
         self.imageFileReferences = imageFileReferences
