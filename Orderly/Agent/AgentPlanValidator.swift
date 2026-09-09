@@ -150,6 +150,22 @@ struct AgentPlanValidator {
             )
         }
 
+        // A category batch is not a semantic cluster. If the natural-language finding
+        // claims that *all* candidate files share a topic/project/subject, the cited
+        // semantic comparisons must form one connected evidence graph covering every
+        // candidate file. Inspecting or comparing only F1/F2 cannot justify a claim
+        // about uninspected F3/F4.
+        if candidate.fileIDs.count > 1,
+           finding.assertsUniversalSemanticGrouping,
+           !Self.hasConnectedSemanticSupport(
+               for: candidate.fileIDs,
+               in: citedObservations
+           ) {
+            issues.append(
+                "A claim that all candidate files share the same topic, project, subject, session, or semantic relationship requires cited semantic comparisons that connect every candidate file. Do not generalize from only a subset of files."
+            )
+        }
+
         if finding.relationship == .related,
            hasRelatedImageComparison,
            finding.proposals.contains(where: { $0.disposition == .trash }) {
@@ -175,6 +191,63 @@ struct AgentPlanValidator {
 
         return issues
     }
+
+    private static func hasConnectedSemanticSupport(
+        for candidateFileIDs: [UUID],
+        in observations: [AgentObservation]
+    ) -> Bool {
+        guard candidateFileIDs.count > 1 else { return true }
+
+        var adjacency: [UUID: Set<UUID>] = [:]
+
+        func connect(_ fileIDs: [UUID]) {
+            guard fileIDs.count >= 2 else { return }
+            for leftIndex in 0..<(fileIDs.count - 1) {
+                for rightIndex in (leftIndex + 1)..<fileIDs.count {
+                    let left = fileIDs[leftIndex]
+                    let right = fileIDs[rightIndex]
+                    adjacency[left, default: []].insert(right)
+                    adjacency[right, default: []].insert(left)
+                }
+            }
+        }
+
+        for observation in observations {
+            if observation.type == .documentComparison,
+               let comparison = observation.documentComparison {
+                switch comparison.semantic.relationship {
+                case .sameDocumentRevision, .sameTopic:
+                    connect(comparison.fileIDs)
+                case .unrelated, .uncertain:
+                    break
+                }
+            }
+
+            if observation.type == .imageSemanticComparison,
+               let comparison = observation.imageSemanticComparison {
+                switch comparison.semantic.relationship {
+                case .sameImageVariant, .sameScene, .sameSubject:
+                    connect(comparison.fileIDs)
+                case .unrelated, .uncertain:
+                    break
+                }
+            }
+        }
+
+        guard let start = candidateFileIDs.first else { return true }
+        var visited: Set<UUID> = [start]
+        var queue: [UUID] = [start]
+
+        while let current = queue.first {
+            queue.removeFirst()
+            for neighbor in adjacency[current] ?? [] where !visited.contains(neighbor) {
+                visited.insert(neighbor)
+                queue.append(neighbor)
+            }
+        }
+
+        return candidateFileIDs.allSatisfy(visited.contains)
+    }
 }
 
 private extension AgentFinding {
@@ -199,6 +272,28 @@ private extension AgentFinding {
                 of: duplicateWordPattern,
                 options: .regularExpression
             ) != nil
+        }
+    }
+
+    var assertsUniversalSemanticGrouping: Bool {
+        let patterns = [
+            #"\ball\s+(candidate\s+)?files?\b.*\b(related|same\s+(topic|project|subject|session|scene))\b"#,
+            #"\b(all|these)\s+files?\b.*\bshare(s|d)?\s+(the\s+)?same\s+(topic|project|subject|session)\b"#,
+            #"\bfiles?\b.*\bshare(s|d)?\s+(the\s+)?same\s+(topic|project|subject|session)\b"#,
+            #"\brelated\s+to\s+the\s+same\s+(topic|project|subject|session)\b"#
+        ]
+        let texts = [summary]
+            + evidence.map(\.description)
+            + proposals.map(\.reason)
+
+        return texts.contains { text in
+            let lowercased = text.lowercased()
+            return patterns.contains { pattern in
+                lowercased.range(
+                    of: pattern,
+                    options: .regularExpression
+                ) != nil
+            }
         }
     }
 
