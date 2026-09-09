@@ -5,6 +5,7 @@ final class OrderlyAgent {
     private let toolRouter: ToolRouter
     private let contextBuilder = AgentContextBuilder()
     private let decoder = AgentDecisionDecoder()
+    private let referenceResolver = AgentDecisionReferenceResolver()
     private let planValidator = AgentPlanValidator()
     private let maxIterationsPerCandidate = 8
 
@@ -86,7 +87,13 @@ final class OrderlyAgent {
             let rawResponse = try await llm.generate(
                 prompt: prompt
             )
-            let decision = try decoder.decode(rawResponse)
+            let decodedDecision = try decoder.decode(rawResponse)
+            let decision = referenceResolver.resolve(
+                decodedDecision,
+                candidate: candidate,
+                environment: environment,
+                observations: state.observations
+            )
 
             try validate(
                 decision,
