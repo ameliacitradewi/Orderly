@@ -69,6 +69,17 @@ struct DocumentComparisonTool {
             semantic: semantic
         )
 
+        print("======== DOCUMENT COMPARISON ========")
+        print("Files:", references.joined(separator: " vs "))
+        print("tokenOverlap=", Self.number(deterministic.tokenOverlap))
+        print("shingleSimilarity=", Self.number(deterministic.shingleSimilarity))
+        print("lengthDifference=", Self.number(deterministic.lengthDifference))
+        print("comparedCharacters=", deterministic.comparedCharacterCount)
+        print("======== QWEN SEMANTIC ASSESSMENT ========")
+        print("relationship=", semantic.relationship.rawValue)
+        print("confidence=", Self.number(semantic.confidence))
+        print("summary=", semantic.summary)
+
         let content = """
         \(references[0]) vs \(references[1])
         tokenOverlap=\(Self.number(deterministic.tokenOverlap))
