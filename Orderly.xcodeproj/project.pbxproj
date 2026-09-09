@@ -14,6 +14,7 @@
 		65058E53304FCC4400723812 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E52304FCC4400723812 /* Hub */; };
 		65058E55304FCC4400723812 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E54304FCC4400723812 /* Tokenizers */; };
 		65058E57304FCC4400723812 /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E56304FCC4400723812 /* Transformers */; };
+		65058E59304FD00000723812 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E58304FD00000723812 /* MLXVLM */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 			files = (
 				65058E57304FCC4400723812 /* Transformers in Frameworks */,
 				65058E4B304FCB2F00723812 /* MLXLLM in Frameworks */,
+				65058E59304FD00000723812 /* MLXVLM in Frameworks */,
 				65058E53304FCC4400723812 /* Hub in Frameworks */,
 				65058E55304FCC4400723812 /* Tokenizers in Frameworks */,
 				65058E4D304FCB2F00723812 /* MLXLMCommon in Frameworks */,
@@ -85,6 +87,7 @@
 				65058E48304FCB2F00723812 /* MLXHuggingFace */,
 				65058E4A304FCB2F00723812 /* MLXLLM */,
 				65058E4C304FCB2F00723812 /* MLXLMCommon */,
+				65058E58304FD00000723812 /* MLXVLM */,
 				65058E4F304FCC2600723812 /* HuggingFace */,
 				65058E52304FCC4400723812 /* Hub */,
 				65058E54304FCC4400723812 /* Tokenizers */,
@@ -423,6 +426,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
+		};
+		65058E58304FD00000723812 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
 		};
 		65058E4F304FCC2600723812 /* HuggingFace */ = {
 			isa = XCSwiftPackageProductDependency;
