@@ -7,6 +7,8 @@ enum ObservationType: String, Codable, Sendable {
     case content
     case discovery
     case documentComparison
+    case imageEvidence
+    case imageComparison
     case error
 }
 
@@ -19,9 +21,14 @@ struct AgentObservation: Codable, Sendable {
     let globalReferences: [String]?
     let comparison: FileComparisonObservation?
     let documentComparison: DocumentComparisonObservation?
+    let imageEvidence: ImageEvidenceObservation?
+    let imageComparison: DeterministicImageComparison?
     let pdfFileReferences: [String]?
     let pdfGlobalReferences: [String]?
+    let imageFileReferences: [String]?
+    let imageGlobalReferences: [String]?
     let unavailablePDFReferences: [String]?
+    let unavailableImageReferences: [String]?
 
     init(
         id: UUID = UUID(),
@@ -32,9 +39,14 @@ struct AgentObservation: Codable, Sendable {
         globalReferences: [String]? = nil,
         comparison: FileComparisonObservation? = nil,
         documentComparison: DocumentComparisonObservation? = nil,
+        imageEvidence: ImageEvidenceObservation? = nil,
+        imageComparison: DeterministicImageComparison? = nil,
         pdfFileReferences: [String]? = nil,
         pdfGlobalReferences: [String]? = nil,
-        unavailablePDFReferences: [String]? = nil
+        imageFileReferences: [String]? = nil,
+        imageGlobalReferences: [String]? = nil,
+        unavailablePDFReferences: [String]? = nil,
+        unavailableImageReferences: [String]? = nil
     ) {
         self.id = id
         self.type = type
@@ -44,9 +56,14 @@ struct AgentObservation: Codable, Sendable {
         self.globalReferences = globalReferences
         self.comparison = comparison
         self.documentComparison = documentComparison
+        self.imageEvidence = imageEvidence
+        self.imageComparison = imageComparison
         self.pdfFileReferences = pdfFileReferences
         self.pdfGlobalReferences = pdfGlobalReferences
+        self.imageFileReferences = imageFileReferences
+        self.imageGlobalReferences = imageGlobalReferences
         self.unavailablePDFReferences = unavailablePDFReferences
+        self.unavailableImageReferences = unavailableImageReferences
     }
 }
 
