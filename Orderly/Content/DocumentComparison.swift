@@ -102,6 +102,12 @@ final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
         struct Payload: Codable {
             let documentA: String
             let documentB: String
+            let pageCountA: Int?
+            let pageCountB: Int?
+            let extractedCharactersA: Int
+            let extractedCharactersB: Int
+            let truncatedA: Bool
+            let truncatedB: Bool
             let tokenOverlap: Double
             let shingleSimilarity: Double
             let lengthDifference: Double
@@ -110,6 +116,12 @@ final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
         let payload = Payload(
             documentA: first.excerpt,
             documentB: second.excerpt,
+            pageCountA: first.pageCount,
+            pageCountB: second.pageCount,
+            extractedCharactersA: first.extractedCharacterCount,
+            extractedCharactersB: second.extractedCharacterCount,
+            truncatedA: first.truncated,
+            truncatedB: second.truncated,
             tokenOverlap: deterministic.tokenOverlap,
             shingleSimilarity: deterministic.shingleSimilarity,
             lengthDifference: deterministic.lengthDifference
@@ -129,7 +141,9 @@ final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
         - unrelated: no meaningful semantic relationship.
         - uncertain: evidence is insufficient.
 
+        If truncatedA or truncatedB is true, remember that you are seeing only a bounded excerpt of that document. Do not claim a revision solely from shared boilerplate or a matching opening section. Use uncertain when the available excerpt does not support a reliable semantic conclusion.
         Do not infer exact duplication; SHA256 verification is handled elsewhere.
+
         Return JSON only:
         {"relationship":"sameDocumentRevision|sameTopic|unrelated|uncertain","summary":"short evidence-based explanation","confidence":0.0}
 
@@ -153,7 +167,11 @@ final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
               !assessment.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DocumentComparisonError.invalidSemanticResponse
         }
-        return assessment
+        return DocumentSemanticAssessment(
+            relationship: assessment.relationship,
+            summary: String(assessment.summary.prefix(512)),
+            confidence: assessment.confidence
+        )
     }
 
     private static func extractJSONObject(_ text: String) -> String {
