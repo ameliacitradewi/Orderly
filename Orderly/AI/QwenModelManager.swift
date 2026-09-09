@@ -62,7 +62,11 @@ actor QwenModelManager {
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    maxTokens: 650,
+                    // Four-file finishCandidate responses can legitimately contain
+                    // one proposal per file plus grounded evidence. 650 tokens was
+                    // observed truncating otherwise-valid JSON mid-object. Keep a
+                    // bounded but larger ceiling; generation still stops at EOS.
+                    maxTokens: 1_200,
                     temperature: 0
                 ),
                 additionalContext: ["enable_thinking": false]
