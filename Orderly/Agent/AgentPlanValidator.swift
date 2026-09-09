@@ -105,6 +105,15 @@ struct AgentPlanValidator {
                 && !Set($0.comparison?.fileIDs ?? []).isDisjoint(with: candidate.fileIDs)
         }
 
+        let hasSameDocumentRevisionObservation = citedObservations.contains { observation in
+            guard observation.type == .documentComparison,
+                  let comparison = observation.documentComparison,
+                  !Set(comparison.fileIDs).isDisjoint(with: candidate.fileIDs) else {
+                return false
+            }
+            return comparison.semantic.relationship == .sameDocumentRevision
+        }
+
         let hasRelatedDocumentComparison = citedObservations.contains { observation in
             guard observation.type == .documentComparison,
                   let comparison = observation.documentComparison,
@@ -123,6 +132,14 @@ struct AgentPlanValidator {
            !hasRelatedDocumentComparison {
             issues.append(
                 "A related finding requires a cited document comparison whose semantic result is sameDocumentRevision or sameTopic and includes a current-candidate file."
+            )
+        }
+
+        if finding.relationship == .related,
+           hasSameDocumentRevisionObservation,
+           finding.assertsUnsupportedRevisionOrdering {
+            issues.append(
+                "Revision comparison establishes a symmetric relationship only; do not claim that one file is the revision, later, newer, older, previous, or final version of the other without trusted structured ordering evidence."
             )
         }
 
@@ -159,6 +176,28 @@ private extension AgentFinding {
                 of: duplicateWordPattern,
                 options: .regularExpression
             ) != nil
+        }
+    }
+
+    var assertsUnsupportedRevisionOrdering: Bool {
+        let patterns = [
+            #"\b(is|appears|seems|looks)\s+(to\s+be\s+)?(a\s+)?revision\s+of\b"#,
+            #"\b(later|newer|older|earlier|latest|previous|prior|final)\s+(version|revision|draft|document|file)\b"#,
+            #"\b(version|revision)\s+(after|before)\b"#,
+            #"\bsupersedes?\b"#
+        ]
+        let texts = [summary]
+            + evidence.map(\.description)
+            + proposals.map(\.reason)
+
+        return texts.contains { text in
+            let lowercased = text.lowercased()
+            return patterns.contains { pattern in
+                lowercased.range(
+                    of: pattern,
+                    options: .regularExpression
+                ) != nil
+            }
         }
     }
 }
