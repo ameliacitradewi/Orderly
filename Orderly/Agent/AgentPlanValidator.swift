@@ -128,10 +128,25 @@ struct AgentPlanValidator {
             }
         }
 
+        let hasRelatedImageComparison = citedObservations.contains { observation in
+            guard observation.type == .imageSemanticComparison,
+                  let comparison = observation.imageSemanticComparison,
+                  !Set(comparison.fileIDs).isDisjoint(with: candidate.fileIDs) else {
+                return false
+            }
+            switch comparison.semantic.relationship {
+            case .sameImageVariant, .sameScene, .sameSubject:
+                return true
+            case .unrelated, .uncertain:
+                return false
+            }
+        }
+
         if finding.relationship == .related,
-           !hasRelatedDocumentComparison {
+           !hasRelatedDocumentComparison,
+           !hasRelatedImageComparison {
             issues.append(
-                "A related finding requires a cited document comparison whose semantic result is sameDocumentRevision or sameTopic and includes a current-candidate file."
+                "A related finding requires a cited semantic document or image comparison whose supported relationship includes a current-candidate file."
             )
         }
 
