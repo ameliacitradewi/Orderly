@@ -47,6 +47,25 @@ struct AgentDecisionReferenceResolver {
             }
         )
 
+        let imageContent = candidateObservations.compactMap(\.imageSemantic)
+        let inspectedLocalImages = Set(imageContent.compactMap(\.localReference))
+        let inspectedGlobalImages = Set(imageContent.map(\.globalReference))
+        let unavailableImages = Set(
+            candidateObservations
+                .filter { $0.type == .error }
+                .flatMap { $0.unavailableImageReferences ?? [] }
+        )
+        let comparedImagePairKeys = Set(
+            candidateObservations.compactMap { observation -> String? in
+                guard observation.type == .imageSemanticComparison,
+                      let references = observation.imageSemanticComparison?.globalReferences,
+                      references.count == 2 else {
+                    return nil
+                }
+                return Self.pairKey(references)
+            }
+        )
+
         let candidatePDFs = Set(
             candidateObservations
                 .filter { $0.type == .candidate }
@@ -55,6 +74,16 @@ struct AgentDecisionReferenceResolver {
         let availableLocalPDFs = candidatePDFs
             .subtracting(inspectedLocalPDFs)
             .subtracting(unavailablePDFs)
+            .sorted()
+
+        let candidateImages = Set(
+            candidateObservations
+                .filter { $0.type == .candidate }
+                .flatMap { $0.imageFileReferences ?? [] }
+        )
+        let availableLocalImages = candidateImages
+            .subtracting(inspectedLocalImages)
+            .subtracting(unavailableImages)
             .sorted()
 
         let exposedGlobalPDFs = Set(
@@ -68,6 +97,17 @@ struct AgentDecisionReferenceResolver {
             .subtracting(unavailablePDFs)
             .sorted()
 
+        let exposedGlobalImages = Set(
+            candidateObservations
+                .filter { $0.type != .error }
+                .flatMap { $0.imageGlobalReferences ?? [] }
+        )
+        let availableExternalImages = exposedGlobalImages
+            .subtracting(localGlobalReferences)
+            .subtracting(inspectedGlobalImages)
+            .subtracting(unavailableImages)
+            .sorted()
+
         let repairedReferences: [String]?
         switch decision.action {
         case .inspectFile, .findRelatedFiles:
@@ -76,11 +116,17 @@ struct AgentDecisionReferenceResolver {
         case .inspectPDFContent:
             repairedReferences = exactlyOne(availableLocalPDFs)
 
+        case .inspectImageContent:
+            repairedReferences = exactlyOne(availableLocalImages)
+
         case .inspectGlobalFile:
             repairedReferences = exactlyOne(visibleGlobalReferences)
 
         case .inspectGlobalPDFContent:
             repairedReferences = exactlyOne(availableExternalPDFs)
+
+        case .inspectGlobalImageContent:
+            repairedReferences = exactlyOne(availableExternalImages)
 
         case .compareFiles:
             repairedReferences = localReferences.count == 2
@@ -100,6 +146,15 @@ struct AgentDecisionReferenceResolver {
             repairedReferences = inspected.count == 2
                 && !Set(inspected).isDisjoint(with: localGlobalReferences)
                 && !comparedDocumentPairKeys.contains(key)
+                ? inspected
+                : nil
+
+        case .compareImageContent:
+            let inspected = inspectedGlobalImages.sorted()
+            let key = Self.pairKey(inspected)
+            repairedReferences = inspected.count == 2
+                && !Set(inspected).isDisjoint(with: localGlobalReferences)
+                && !comparedImagePairKeys.contains(key)
                 ? inspected
                 : nil
 
