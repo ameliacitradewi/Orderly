@@ -14,6 +14,10 @@ struct OrderlyApp: App {
         WindowGroup {
 #if DEBUG
             if ProcessInfo.processInfo.environment[
+                "ORDERLY_MIXED_MODALITY_BENCHMARK"
+            ] == "1" {
+                MixedModalityBenchmarkView()
+            } else if ProcessInfo.processInfo.environment[
                 "ORDERLY_QWEN_IMAGE_AGENT_SMOKE"
             ] == "1" {
                 HybridImageAgentSmokeView()
@@ -40,6 +44,58 @@ private enum SmokeStatus {
     case running
     case passed
     case failed(String)
+}
+
+private struct MixedModalityBenchmarkView: View {
+    @State private var status: SmokeStatus = .running
+
+    var body: some View {
+        VStack(spacing: 14) {
+            switch status {
+            case .running:
+                ProgressView()
+                Text("Running mixed-modality Orderly benchmark…")
+                    .font(.headline)
+                Text("Normal UI and cleanup execution are disabled. The benchmark runs exact-duplicate, PDF-revision, and image-variant candidates while measuring local model latency and resident memory.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 560)
+
+            case .passed:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 34))
+                Text("Mixed-modality benchmark passed")
+                    .font(.headline)
+                Text("See the Xcode console for quality, model-runtime, and resident-memory reports.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 520)
+
+            case .failed(let message):
+                Image(systemName: "xmark.octagon.fill")
+                    .font(.system(size: 34))
+                Text("Mixed-modality benchmark failed")
+                    .font(.headline)
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 560)
+            }
+        }
+        .padding(40)
+        .frame(minWidth: 700, minHeight: 440)
+        .task {
+            do {
+                try await MixedModalityBenchmarkSmoke.run()
+                status = .passed
+            } catch {
+                print("======== MIXED MODALITY BENCHMARK FAILED ========")
+                print(String(reflecting: error))
+                print(error.localizedDescription)
+                status = .failed(error.localizedDescription)
+            }
+        }
+    }
 }
 
 private struct HybridImageAgentSmokeView: View {
