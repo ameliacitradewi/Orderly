@@ -58,7 +58,6 @@ actor QwenModelManager {
 
             try Task.checkCancellation()
             let model = try await self.modelContainer()
-            let startedAt = Date()
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
@@ -71,10 +70,37 @@ actor QwenModelManager {
                 ),
                 additionalContext: ["enable_thinking": false]
             )
-            let response = try await session.respond(to: prompt)
+
+            let firstStartedAt = Date()
+            var response = try await session.respond(to: prompt)
             await LocalModelRuntimeMetrics.shared.recordQwenInference(
-                seconds: Date().timeIntervalSince(startedAt)
+                seconds: Date().timeIntervalSince(firstStartedAt)
             )
+
+            // Structured agent/tool prompts are allowed one bounded regeneration when
+            // the model returns malformed or truncated JSON. The same ChatSession keeps
+            // the original instruction and prior response in context, so the retry does
+            // not need to copy untrusted observations into a new prompt. If the second
+            // response is still invalid, downstream typed decoders reject it normally.
+            if Self.expectsJSONObject(prompt),
+               !Self.containsValidJSONObject(response) {
+                print("======== QWEN STRUCTURED RESPONSE RETRY ========")
+                print("Previous JSON response was incomplete or malformed; regenerating once.")
+
+                let retryStartedAt = Date()
+                response = try await session.respond(
+                    to: """
+                    Your previous response was incomplete or invalid JSON.
+                    Regenerate the complete JSON object requested by the previous instruction.
+                    Preserve the same intended action and evidence, but keep summary, evidence descriptions, and proposal reasons concise.
+                    Output one complete JSON object only, with no markdown or commentary.
+                    """
+                )
+                await LocalModelRuntimeMetrics.shared.recordQwenInference(
+                    seconds: Date().timeIntervalSince(retryStartedAt)
+                )
+            }
+
             return response
         }
 
@@ -83,5 +109,29 @@ actor QwenModelManager {
         }
 
         return try await generation.value
+    }
+
+    private static func expectsJSONObject(_ prompt: String) -> Bool {
+        prompt.range(
+            of: "return json only",
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) != nil
+    }
+
+    private static func containsValidJSONObject(_ response: String) -> Bool {
+        let stripped = response
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let first = stripped.firstIndex(of: "{"),
+              let last = stripped.lastIndex(of: "}"),
+              first <= last,
+              let data = String(stripped[first...last]).data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              object is [String: Any] else {
+            return false
+        }
+        return true
     }
 }
