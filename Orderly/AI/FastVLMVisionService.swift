@@ -25,6 +25,7 @@ actor FastVLMModelManager {
         }
 
         print("======== LOADING FASTVLM ========")
+        let startedAt = Date()
 
         let task = Task<ModelContainer, Error> {
             try await VLMModelFactory.shared.loadContainer(
@@ -37,6 +38,11 @@ actor FastVLMModelManager {
 
         do {
             let container = try await task.value
+            let duration = Date().timeIntervalSince(startedAt)
+            await LocalModelRuntimeMetrics.shared.recordFastVLMLoad(
+                seconds: duration,
+                residentBytes: ResidentMemorySampler.currentBytes()
+            )
             print("======== FASTVLM READY ========")
             print("Model:", Self.modelName)
             return container
@@ -58,6 +64,7 @@ actor FastVLMModelManager {
 
             try Task.checkCancellation()
             let model = try await self.modelContainer()
+            let startedAt = Date()
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
@@ -65,10 +72,14 @@ actor FastVLMModelManager {
                     temperature: 0
                 )
             )
-            return try await session.respond(
+            let response = try await session.respond(
                 to: prompt,
                 image: .url(imageURL)
             )
+            await LocalModelRuntimeMetrics.shared.recordFastVLMInference(
+                seconds: Date().timeIntervalSince(startedAt)
+            )
+            return response
         }
 
         inferenceTail = Task {
