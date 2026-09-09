@@ -53,6 +53,9 @@ struct FindRelatedFilesTool {
             globalReferences: [source.reference] + best.map { $0.entry.reference },
             pdfGlobalReferences: best.compactMap {
                 InspectPDFContentTool.supports($0.entry.file) ? $0.entry.reference : nil
+            },
+            imageGlobalReferences: best.compactMap {
+                InspectImageEvidenceTool.supports($0.entry.file) ? $0.entry.reference : nil
             }
         )
     }
