@@ -7,7 +7,9 @@ enum AgentAction: String, Codable, Sendable, Hashable {
     case inspectPDFContent
     case findRelatedFiles
     case inspectGlobalFile
+    case inspectGlobalPDFContent
     case compareGlobalFiles
+    case compareDocumentContent
     case finishCandidate
 }
 
