@@ -84,7 +84,7 @@ struct AgentContextBuilder {
             }
             if guidance.isEmpty {
                 guidance.append(
-                    "No additional supported PDF content is currently available. Use metadata/discovery or finish with review when evidence remains insufficient."
+                    "No uninspected supported PDFs are available. Use metadata/discovery or finish with review when evidence remains insufficient."
                 )
             }
             investigationRule = guidance.joined(separator: " ")
@@ -124,7 +124,7 @@ struct AgentContextBuilder {
             let localPDFAction = availableLocalPDFs.isEmpty ? "" : """
             inspectPDFContent
             - Extract a bounded PDF text excerpt for exactly one local F reference.
-            - Allowed local PDF references: \(availableLocalPDFs.joined(separator: ", ")).
+            - fileReferences must contain exactly one of: \(availableLocalPDFs.joined(separator: ", ")).
             - Use only when metadata is insufficient. Do not repeat successful or failed inspections.
             """
 
