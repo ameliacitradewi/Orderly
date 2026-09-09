@@ -10,10 +10,12 @@ final class OrderlyAgent {
 
     init(
         llm: any LLMService,
-        toolRouter: ToolRouter = ToolRouter()
+        toolRouter: ToolRouter? = nil
     ) {
         self.llm = llm
-        self.toolRouter = toolRouter
+        self.toolRouter = toolRouter ?? ToolRouter(
+            documentSemanticAnalyzer: QwenDocumentSemanticAnalyzer(llm: llm)
+        )
     }
 
     func run(
@@ -197,7 +199,7 @@ final class OrderlyAgent {
 
             let observation: AgentObservation
             do {
-                observation = try toolRouter.execute(
+                observation = try await toolRouter.executeAsync(
                     decision: decision,
                     environment: environment,
                     observations: state.observations
@@ -215,9 +217,9 @@ final class OrderlyAgent {
                         content: """
                         Tool request failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
-                        Valid file references for this candidate: \(validReferences).
-                        compareFiles requires two distinct F references; compareGlobalFiles requires two distinct observed G references including a current candidate file.
-                        inspectFile, inspectPDFContent, and findRelatedFiles require one F reference. inspectGlobalFile requires one observed G reference. Use G references from this candidate's observations, never paths or guessed IDs.
+                        Valid local file references for this candidate: \(validReferences).
+                        compareFiles requires two distinct F references; compareGlobalFiles and compareDocumentContent require two distinct observed G references including a current candidate file.
+                        inspectFile, inspectPDFContent, and findRelatedFiles require one F reference. inspectGlobalFile and inspectGlobalPDFContent require one observed G reference. Use G references from this candidate's observations, never paths or guessed IDs.
                         Correct the arguments and retry. This failed request is not factual evidence.
                         """
                     )
@@ -226,7 +228,10 @@ final class OrderlyAgent {
                     throw error
                 }
             } catch let error as ContentInspectionError {
-                guard decision.action == .inspectPDFContent else { throw error }
+                guard decision.action == .inspectPDFContent
+                        || decision.action == .inspectGlobalPDFContent else {
+                    throw error
+                }
                 switch error {
                 case .unsupportedFileType, .cannotOpenPDF:
                     // A failed read supplies no content evidence. Retain its signature
@@ -235,10 +240,10 @@ final class OrderlyAgent {
                         type: .error,
                         candidateID: candidate.id,
                         content: """
-                        Content inspection failed: inspectPDFContent, fileReferences=\(decision.fileReferences).
+                        Content inspection failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
                         No content was inspected. Do not retry PDF inspection for these references or infer their contents.
-                        inspectPDFContent supports PDF files only, not TXT, Markdown, Pages, or images.
+                        PDF content inspection supports PDF files only, not TXT, Markdown, Pages, or images.
                         Use metadata or findRelatedFiles for further investigation, or finish with review when allowed if purpose remains unknown.
                         This error is feedback only and cannot be cited as factual evidence.
                         """,
@@ -246,6 +251,31 @@ final class OrderlyAgent {
                     )
                 case .fileOutsideAnalyzedFolder:
                     throw error
+                }
+            } catch let error as DocumentComparisonError {
+                switch error {
+                case .missingContentEvidence:
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Document comparison failed because both requested G references do not yet have content observations.
+                        Inspect the local PDF with inspectPDFContent and any external PDF with inspectGlobalPDFContent, then retry compareDocumentContent.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """
+                    )
+                    state.executedToolCalls.remove(signature)
+                case .invalidSemanticResponse:
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        The semantic comparison model returned an invalid structured response.
+                        You may retry compareDocumentContent once after considering the existing evidence, or finish with uncertain/review when appropriate.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """
+                    )
+                    state.executedToolCalls.remove(signature)
                 }
             }
             state.observations.append(observation)
