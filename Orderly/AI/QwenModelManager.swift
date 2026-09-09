@@ -10,6 +10,7 @@ actor QwenModelManager {
     static let modelName = "Qwen3-8B-4bit"
 
     private var loadingTask: Task<ModelContainer, Error>?
+    private var inferenceTail: Task<Void, Never>?
 
     /// Keeps the successfully loaded container alive and shares the same in-flight
     /// task when more than one request arrives during the initial model load.
@@ -36,5 +37,36 @@ actor QwenModelManager {
             loadingTask = nil
             throw error
         }
+    }
+
+    /// MLX model weights are shared, but inference requests are intentionally
+    /// serialized. Independent ChatSession instances still get clean transcripts,
+    /// while two app tasks cannot drive the same ModelContainer concurrently.
+    func generate(prompt: String) async throws -> String {
+        let predecessor = inferenceTail
+
+        let generation = Task<String, Error> {
+            if let predecessor {
+                await predecessor.value
+            }
+
+            try Task.checkCancellation()
+            let model = try await self.modelContainer()
+            let session = ChatSession(
+                model,
+                generateParameters: GenerateParameters(
+                    maxTokens: 650,
+                    temperature: 0
+                ),
+                additionalContext: ["enable_thinking": false]
+            )
+            return try await session.respond(to: prompt)
+        }
+
+        inferenceTail = Task {
+            _ = try? await generation.value
+        }
+
+        return try await generation.value
     }
 }
