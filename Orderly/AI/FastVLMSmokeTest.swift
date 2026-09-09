@@ -76,11 +76,36 @@ enum FastVLMSmokeTest {
         print("No cleanup action was executed.")
     }
 
+    /// Renders directly into an explicit bitmap context. Avoid NSImage.lockFocus +
+    /// tiffRepresentation here: in a headless/debug SwiftUI task that path can create
+    /// an image representation with zero destination capacity before a drawable rep
+    /// has been committed.
     private static func makeScreenshotLikeFixture(at url: URL) throws {
-        let size = NSSize(width: 960, height: 600)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        defer { image.unlockFocus() }
+        let width = 960
+        let height = 600
+        let size = NSSize(width: width, height: height)
+
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            throw FastVLMSmokeError.cannotCreateFixture
+        }
+        bitmap.size = size
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        defer {
+            NSGraphicsContext.restoreGraphicsState()
+        }
 
         NSColor(calibratedWhite: 0.96, alpha: 1).setFill()
         NSRect(origin: .zero, size: size).fill()
@@ -154,12 +179,26 @@ enum FastVLMSmokeTest {
             withAttributes: buttonAttributes
         )
 
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else {
+        context.flushGraphics()
+
+        guard let png = bitmap.representation(
+            using: .png,
+            properties: [:]
+        ), !png.isEmpty else {
             throw FastVLMSmokeError.cannotCreateFixture
         }
         try png.write(to: url, options: .atomic)
+
+        let attributes = try FileManager.default.attributesOfItem(
+            atPath: url.path
+        )
+        guard let fileSize = attributes[.size] as? NSNumber,
+              fileSize.intValue > 0 else {
+            throw FastVLMSmokeError.cannotCreateFixture
+        }
+
+        print("======== FASTVLM FIXTURE READY ========")
+        print("bytes=", fileSize.intValue)
     }
 }
 
