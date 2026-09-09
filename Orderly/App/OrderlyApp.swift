@@ -14,6 +14,10 @@ struct OrderlyApp: App {
         WindowGroup {
 #if DEBUG
             if ProcessInfo.processInfo.environment[
+                "ORDERLY_FASTVLM_IMAGE_SMOKE"
+            ] == "1" {
+                FastVLMImageSmokeView()
+            } else if ProcessInfo.processInfo.environment[
                 "ORDERLY_QWEN_DOCUMENT_SMOKE"
             ] == "1" {
                 QwenDocumentSmokeView()
@@ -28,14 +32,66 @@ struct OrderlyApp: App {
 }
 
 #if DEBUG
-private struct QwenDocumentSmokeView: View {
-    private enum Status {
-        case running
-        case passed
-        case failed(String)
-    }
+private enum SmokeStatus {
+    case running
+    case passed
+    case failed(String)
+}
 
-    @State private var status: Status = .running
+private struct FastVLMImageSmokeView: View {
+    @State private var status: SmokeStatus = .running
+
+    var body: some View {
+        VStack(spacing: 14) {
+            switch status {
+            case .running:
+                ProgressView()
+                Text("Running real FastVLM image smoke test…")
+                    .font(.headline)
+                Text("Normal Orderly analysis is disabled for this debug run. FastVLM will inspect one generated screenshot-like image using the local MLX VLM runtime.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 500)
+
+            case .passed:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 34))
+                Text("Real FastVLM image smoke test passed")
+                    .font(.headline)
+                Text("See the Xcode console for deterministic image evidence and the structured visual observation.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 500)
+
+            case .failed(let message):
+                Image(systemName: "xmark.octagon.fill")
+                    .font(.system(size: 34))
+                Text("Real FastVLM image smoke test failed")
+                    .font(.headline)
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 520)
+            }
+        }
+        .padding(40)
+        .frame(minWidth: 680, minHeight: 420)
+        .task {
+            do {
+                try await FastVLMSmokeTest.runImageSemanticInspection()
+                status = .passed
+            } catch {
+                print("======== REAL FASTVLM IMAGE SMOKE FAILED ========")
+                print(String(reflecting: error))
+                print(error.localizedDescription)
+                status = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+private struct QwenDocumentSmokeView: View {
+    @State private var status: SmokeStatus = .running
 
     var body: some View {
         VStack(spacing: 14) {
