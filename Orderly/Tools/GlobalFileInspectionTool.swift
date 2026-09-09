@@ -20,7 +20,8 @@ struct GlobalFileInspectionTool {
             duplicateCopies=\(file.duplicateCopyCount)
             Snapshot metadata only; semantic content has not been inspected. External files are context only and cannot receive proposals in this candidate.
             """,
-            globalReferences: [reference]
+            globalReferences: [reference],
+            pdfGlobalReferences: InspectPDFContentTool.supports(file) ? [reference] : nil
         )
     }
 
