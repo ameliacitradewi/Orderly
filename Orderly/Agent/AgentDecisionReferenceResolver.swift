@@ -1,7 +1,9 @@
 import Foundation
 
 /// Repairs only missing tool arguments when there is exactly one safe, typed choice.
-/// The model still chooses the action; this layer never chooses between competing files.
+/// It may also canonicalize an explicitly supplied local F reference to the trusted G
+/// identity of the *same file* for tools whose contract is G-only. This never chooses
+/// a different file or changes the model-selected action.
 struct AgentDecisionReferenceResolver {
     func resolve(
         _ decision: AgentDecision,
@@ -10,8 +12,7 @@ struct AgentDecisionReferenceResolver {
         observations: [AgentObservation]
     ) -> AgentDecision {
         guard decision.action != .inspectCandidate,
-              decision.action != .finishCandidate,
-              decision.fileReferences.isEmpty else {
+              decision.action != .finishCandidate else {
             return decision
         }
 
@@ -23,6 +24,14 @@ struct AgentDecisionReferenceResolver {
         let localGlobalReferences = Set(localFiles.compactMap {
             environment.globalReferenceByFileID[$0.fileID]
         })
+        let localToGlobal = Dictionary(
+            uniqueKeysWithValues: localFiles.compactMap { file -> (String, String)? in
+                guard let global = environment.globalReferenceByFileID[file.fileID] else {
+                    return nil
+                }
+                return (file.reference, global)
+            }
+        )
         let visibleGlobalReferences = environment.visibleGlobalReferences(
             candidateID: candidate.id,
             observations: observations
@@ -108,6 +117,33 @@ struct AgentDecisionReferenceResolver {
             .subtracting(unavailableImages)
             .sorted()
 
+        // Qwen sometimes correctly selects a G-only comparison action but copies the
+        // local F aliases from the image/PDF observations. Canonicalize only when every
+        // resulting G reference is already eligible for that exact comparison. An
+        // invalid, ambiguous, or uninspected explicit reference is intentionally left
+        // untouched so ToolRouter can reject it and provide bounded feedback.
+        if !decision.fileReferences.isEmpty,
+           let canonical = canonicalizeExplicitGlobalComparisonReferences(
+               decision,
+               localToGlobal: localToGlobal,
+               localGlobalReferences: localGlobalReferences,
+               visibleGlobalReferences: Set(visibleGlobalReferences),
+               inspectedGlobalPDFs: inspectedGlobalPDFs,
+               inspectedGlobalImages: inspectedGlobalImages,
+               comparedDocumentPairKeys: comparedDocumentPairKeys,
+               comparedImagePairKeys: comparedImagePairKeys
+           ) {
+            print("======== AGENT REFERENCE CANONICALIZATION ========")
+            print("Action:", decision.action.rawValue)
+            print("Original fileReferences:", decision.fileReferences)
+            print("Canonical G references:", canonical)
+            return replacingReferences(in: decision, with: canonical)
+        }
+
+        guard decision.fileReferences.isEmpty else {
+            return decision
+        }
+
         let repairedReferences: [String]?
         switch decision.action {
         case .inspectFile, .findRelatedFiles:
@@ -170,10 +206,63 @@ struct AgentDecisionReferenceResolver {
         print("Action:", decision.action.rawValue)
         print("Filled fileReferences:", repairedReferences)
 
-        return AgentDecision(
+        return replacingReferences(in: decision, with: repairedReferences)
+    }
+
+    private func canonicalizeExplicitGlobalComparisonReferences(
+        _ decision: AgentDecision,
+        localToGlobal: [String: String],
+        localGlobalReferences: Set<String>,
+        visibleGlobalReferences: Set<String>,
+        inspectedGlobalPDFs: Set<String>,
+        inspectedGlobalImages: Set<String>,
+        comparedDocumentPairKeys: Set<String>,
+        comparedImagePairKeys: Set<String>
+    ) -> [String]? {
+        guard decision.fileReferences.count == 2 else { return nil }
+
+        let canonical = decision.fileReferences.map {
+            localToGlobal[$0] ?? $0
+        }
+        guard canonical != decision.fileReferences,
+              Set(canonical).count == 2,
+              !Set(canonical).isDisjoint(with: localGlobalReferences) else {
+            return nil
+        }
+
+        switch decision.action {
+        case .compareGlobalFiles:
+            return Set(canonical).isSubset(of: visibleGlobalReferences)
+                ? canonical
+                : nil
+
+        case .compareDocumentContent:
+            guard Set(canonical).isSubset(of: inspectedGlobalPDFs),
+                  !comparedDocumentPairKeys.contains(Self.pairKey(canonical)) else {
+                return nil
+            }
+            return canonical
+
+        case .compareImageContent:
+            guard Set(canonical).isSubset(of: inspectedGlobalImages),
+                  !comparedImagePairKeys.contains(Self.pairKey(canonical)) else {
+                return nil
+            }
+            return canonical
+
+        default:
+            return nil
+        }
+    }
+
+    private func replacingReferences(
+        in decision: AgentDecision,
+        with references: [String]
+    ) -> AgentDecision {
+        AgentDecision(
             action: decision.action,
             candidateID: decision.candidateID,
-            fileReferences: repairedReferences,
+            fileReferences: references,
             reason: decision.reason,
             finding: decision.finding
         )
