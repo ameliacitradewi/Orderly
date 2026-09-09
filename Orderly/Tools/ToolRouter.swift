@@ -177,6 +177,13 @@ final class ToolRouter {
             }
             return InspectPDFContentTool.supports(metadata)
         }
+        let imageFiles = evidence.files.filter { file in
+            guard let global = environment.globalReferenceByFileID[file.fileID],
+                  let metadata = environment.filesByGlobalReference[global] else {
+                return false
+            }
+            return InspectImageEvidenceTool.supports(metadata)
+        }
 
         return AgentObservation(
             type: .candidate,
@@ -187,6 +194,10 @@ final class ToolRouter {
             },
             pdfFileReferences: pdfFiles.map(\.reference),
             pdfGlobalReferences: pdfFiles.compactMap {
+                environment.globalReferenceByFileID[$0.fileID]
+            },
+            imageFileReferences: imageFiles.map(\.reference),
+            imageGlobalReferences: imageFiles.compactMap {
                 environment.globalReferenceByFileID[$0.fileID]
             }
         )
@@ -235,6 +246,9 @@ final class ToolRouter {
             content: content,
             globalReferences: globalReference.map { [$0] },
             pdfGlobalReferences: (metadata.map(InspectPDFContentTool.supports) == true)
+                ? globalReference.map { [$0] }
+                : nil,
+            imageGlobalReferences: (metadata.map(InspectImageEvidenceTool.supports) == true)
                 ? globalReference.map { [$0] }
                 : nil
         )
