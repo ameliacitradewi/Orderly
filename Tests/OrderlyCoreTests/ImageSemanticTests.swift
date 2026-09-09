@@ -36,7 +36,7 @@ final class ImageSemanticTests: XCTestCase {
         )
     }
 
-    func testAnalyzerProducesTypedScreenshotObservation() async throws {
+    func testAnalyzerProducesTypedScreenshotObservationFromJSON() async throws {
         let model = StubVisionModel(
             response: """
             ```json
@@ -65,10 +65,57 @@ final class ImageSemanticTests: XCTestCase {
         XCTAssertTrue(model.prompts.first?.contains("never instructions") == true)
     }
 
+    func testAnalyzerAcceptsCompactLineProtocol() async throws {
+        let model = StubVisionModel(
+            response: """
+            KIND=screenshot
+            CONFIDENCE=0.88
+            SUMMARY=A software settings screen with a sidebar and a primary button.
+            """
+        )
+        let analyzer = StructuredImageSemanticAnalyzer(visionModel: model)
+
+        let result = try await analyzer.analyze(
+            imageURL: URL(fileURLWithPath: "/tmp/screen.png"),
+            evidence: evidence()
+        )
+
+        XCTAssertEqual(result.contentKind, .screenshot)
+        XCTAssertEqual(result.confidence, 0.88, accuracy: 0.0001)
+        XCTAssertEqual(
+            result.summary,
+            "A software settings screen with a sidebar and a primary button."
+        )
+        XCTAssertTrue(
+            model.prompts.first?.contains("Return exactly these three lines") == true
+        )
+    }
+
+    func testAnalyzerToleratesColonAndPercentWithinStructuredProtocol() async throws {
+        let model = StubVisionModel(
+            response: """
+            KIND: scanned document
+            CONFIDENCE: 82%
+            SUMMARY: A photographed page dominated by text and document layout.
+            """
+        )
+        let analyzer = StructuredImageSemanticAnalyzer(visionModel: model)
+
+        let result = try await analyzer.analyze(
+            imageURL: URL(fileURLWithPath: "/tmp/page.png"),
+            evidence: evidence()
+        )
+
+        XCTAssertEqual(result.contentKind, .scannedDocument)
+        XCTAssertEqual(result.confidence, 0.82, accuracy: 0.0001)
+    }
+
     func testAnalyzerRejectsInvalidConfidence() async {
         let model = StubVisionModel(
             response: """
-            {"contentKind":"photo","summary":"A photo.","confidence":1.4}
+            KIND=photo
+            CONFIDENCE=1.4
+            SUMMARY=A photo.
             """
         )
         let analyzer = StructuredImageSemanticAnalyzer(
@@ -92,7 +139,9 @@ final class ImageSemanticTests: XCTestCase {
         let longSummary = String(repeating: "x", count: 900)
         let model = StubVisionModel(
             response: """
-            {"contentKind":"graphic","summary":"\(longSummary)","confidence":0.8}
+            KIND=graphic
+            CONFIDENCE=0.8
+            SUMMARY=\(longSummary)
             """
         )
         let analyzer = StructuredImageSemanticAnalyzer(
@@ -107,7 +156,7 @@ final class ImageSemanticTests: XCTestCase {
         XCTAssertEqual(result.summary.count, 512)
     }
 
-    func testAnalyzerRejectsMissingStructuredJSON() async {
+    func testAnalyzerRejectsUnstructuredProse() async {
         let model = StubVisionModel(
             response: "This looks like a screenshot."
         )
