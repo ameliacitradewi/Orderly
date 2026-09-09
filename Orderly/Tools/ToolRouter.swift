@@ -3,10 +3,14 @@ import Foundation
 final class ToolRouter {
     private let inspectPDFContentTool: InspectPDFContentTool
     private let documentComparisonTool: DocumentComparisonTool?
+    private let inspectImageContentTool: InspectImageContentTool?
+    private let compareImageContentTool: CompareImageContentTool?
 
     init(
         contentInspectionService: any ContentInspectionService = PDFTextExtractor(),
-        documentSemanticAnalyzer: (any DocumentSemanticAnalyzing)? = nil
+        documentSemanticAnalyzer: (any DocumentSemanticAnalyzing)? = nil,
+        imageSemanticAnalyzer: (any ImageSemanticAnalyzing)? = nil,
+        imagePairSemanticAnalyzer: (any ImagePairSemanticAnalyzing)? = nil
     ) {
         inspectPDFContentTool = InspectPDFContentTool(
             contentInspectionService: contentInspectionService
@@ -18,6 +22,20 @@ final class ToolRouter {
         } else {
             documentComparisonTool = nil
         }
+        if let imageSemanticAnalyzer {
+            inspectImageContentTool = InspectImageContentTool(
+                semanticAnalyzer: imageSemanticAnalyzer
+            )
+        } else {
+            inspectImageContentTool = nil
+        }
+        if let imagePairSemanticAnalyzer {
+            compareImageContentTool = CompareImageContentTool(
+                semanticAnalyzer: imagePairSemanticAnalyzer
+            )
+        } else {
+            compareImageContentTool = nil
+        }
     }
 
     func executeAsync(
@@ -25,7 +43,8 @@ final class ToolRouter {
         environment: AgentEnvironment,
         observations: [AgentObservation] = []
     ) async throws -> AgentObservation {
-        if decision.action == .compareDocumentContent {
+        switch decision.action {
+        case .compareDocumentContent:
             let (candidateID, _) = try candidateEvidence(
                 for: decision,
                 environment: environment
@@ -39,13 +58,42 @@ final class ToolRouter {
                 environment: environment,
                 observations: observations
             )
-        }
 
-        return try execute(
-            decision: decision,
-            environment: environment,
-            observations: observations
-        )
+        case .inspectImageContent:
+            return try await inspectImageContent(
+                decision,
+                environment: environment
+            )
+
+        case .inspectGlobalImageContent:
+            return try await inspectGlobalImageContent(
+                decision,
+                environment: environment,
+                observations: observations
+            )
+
+        case .compareImageContent:
+            let (candidateID, _) = try candidateEvidence(
+                for: decision,
+                environment: environment
+            )
+            guard let compareImageContentTool else {
+                throw AgentToolError.semanticAnalyzerUnavailable
+            }
+            return try await compareImageContentTool.execute(
+                references: decision.fileReferences,
+                candidateID: candidateID,
+                environment: environment,
+                observations: observations
+            )
+
+        default:
+            return try execute(
+                decision: decision,
+                environment: environment,
+                observations: observations
+            )
+        }
     }
 
     func execute(
@@ -140,9 +188,11 @@ final class ToolRouter {
                 environment: environment,
                 observations: observations
             )
-        case .compareDocumentContent:
-            throw AgentToolError.notAToolAction
-        case .finishCandidate:
+        case .compareDocumentContent,
+             .inspectImageContent,
+             .inspectGlobalImageContent,
+             .compareImageContent,
+             .finishCandidate:
             throw AgentToolError.notAToolAction
         }
     }
@@ -371,6 +421,77 @@ final class ToolRouter {
         }?.reference
 
         return try inspectPDFContentTool.execute(
+            file: metadata,
+            localReference: localReference,
+            globalReference: reference,
+            candidateID: candidateID,
+            analyzedFolder: environment.analysis.analyzedFolder
+        )
+    }
+
+    private func inspectImageContent(
+        _ decision: AgentDecision,
+        environment: AgentEnvironment
+    ) async throws -> AgentObservation {
+        let (candidateID, evidence) = try candidateEvidence(
+            for: decision,
+            environment: environment
+        )
+        guard decision.fileReferences.count == 1 else {
+            throw AgentToolError.wrongFileCount
+        }
+        guard let inspectImageContentTool else {
+            throw AgentToolError.semanticAnalyzerUnavailable
+        }
+
+        let reference = decision.fileReferences[0]
+        let candidateFile = try file(reference: reference, in: evidence)
+        guard let globalReference = environment.globalReferenceByFileID[candidateFile.fileID],
+              let metadata = environment.filesByGlobalReference[globalReference] else {
+            throw AgentToolError.unavailableFileMetadata
+        }
+
+        return try await inspectImageContentTool.execute(
+            file: metadata,
+            localReference: reference,
+            globalReference: globalReference,
+            candidateID: candidateID,
+            analyzedFolder: environment.analysis.analyzedFolder
+        )
+    }
+
+    private func inspectGlobalImageContent(
+        _ decision: AgentDecision,
+        environment: AgentEnvironment,
+        observations: [AgentObservation]
+    ) async throws -> AgentObservation {
+        let (candidateID, evidence) = try candidateEvidence(
+            for: decision,
+            environment: environment
+        )
+        guard decision.fileReferences.count == 1 else {
+            throw AgentToolError.wrongFileCount
+        }
+        guard let inspectImageContentTool else {
+            throw AgentToolError.semanticAnalyzerUnavailable
+        }
+
+        let reference = decision.fileReferences[0]
+        let visible = environment.visibleGlobalReferences(
+            candidateID: candidateID,
+            observations: observations
+        )
+        guard visible.contains(reference) else {
+            throw AgentToolError.unobservedGlobalReference(reference)
+        }
+        guard let metadata = environment.filesByGlobalReference[reference] else {
+            throw AgentToolError.invalidFileReference(reference)
+        }
+        let localReference = evidence.files.first {
+            $0.fileID == metadata.id
+        }?.reference
+
+        return try await inspectImageContentTool.execute(
             file: metadata,
             localReference: localReference,
             globalReference: reference,
