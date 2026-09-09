@@ -6,6 +6,7 @@ enum ObservationType: String, Codable, Sendable {
     case comparison
     case content
     case discovery
+    case documentComparison
     case error
 }
 
@@ -17,7 +18,9 @@ struct AgentObservation: Codable, Sendable {
     let contentObservation: ContentObservation?
     let globalReferences: [String]?
     let comparison: FileComparisonObservation?
+    let documentComparison: DocumentComparisonObservation?
     let pdfFileReferences: [String]?
+    let pdfGlobalReferences: [String]?
     let unavailablePDFReferences: [String]?
 
     init(
@@ -28,7 +31,9 @@ struct AgentObservation: Codable, Sendable {
         contentObservation: ContentObservation? = nil,
         globalReferences: [String]? = nil,
         comparison: FileComparisonObservation? = nil,
+        documentComparison: DocumentComparisonObservation? = nil,
         pdfFileReferences: [String]? = nil,
+        pdfGlobalReferences: [String]? = nil,
         unavailablePDFReferences: [String]? = nil
     ) {
         self.id = id
@@ -38,7 +43,9 @@ struct AgentObservation: Codable, Sendable {
         self.contentObservation = contentObservation
         self.globalReferences = globalReferences
         self.comparison = comparison
+        self.documentComparison = documentComparison
         self.pdfFileReferences = pdfFileReferences
+        self.pdfGlobalReferences = pdfGlobalReferences
         self.unavailablePDFReferences = unavailablePDFReferences
     }
 }
