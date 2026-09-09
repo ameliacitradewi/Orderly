@@ -21,7 +21,8 @@ struct GlobalFileInspectionTool {
             Snapshot metadata only; semantic content has not been inspected. External files are context only and cannot receive proposals in this candidate.
             """,
             globalReferences: [reference],
-            pdfGlobalReferences: InspectPDFContentTool.supports(file) ? [reference] : nil
+            pdfGlobalReferences: InspectPDFContentTool.supports(file) ? [reference] : nil,
+            imageGlobalReferences: InspectImageEvidenceTool.supports(file) ? [reference] : nil
         )
     }
 
