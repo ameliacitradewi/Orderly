@@ -4,44 +4,44 @@ import PDFKit
 struct PDFTextExtractor: ContentInspectionService {
     func inspectPDF(
         at url: URL,
-        fileReference: String,
+        fileID: UUID,
+        localReference: String?,
+        globalReference: String,
         maxExcerptCharacters: Int
     ) throws -> ContentObservation {
-        guard let document = PDFDocument(url: url), !document.isLocked else {
+        guard let document = PDFDocument(url: url) else {
             throw ContentInspectionError.cannotOpenPDF
         }
 
-        let limit = max(0, maxExcerptCharacters)
-        var excerpt = ""
-        var extractedCharacterCount = 0
-        var includedTextCharacterCount = 0
+        var extracted = ""
+        extracted.reserveCapacity(min(maxExcerptCharacters, 8_192))
+        var totalCharacters = 0
 
-        for pageIndex in 0..<document.pageCount {
-            guard let text = document.page(at: pageIndex)?.string,
-                  !text.isEmpty else {
-                continue
+        for index in 0..<document.pageCount {
+            guard let text = document.page(at: index)?.string else { continue }
+            totalCharacters += text.count
+
+            if extracted.count < maxExcerptCharacters {
+                let remaining = maxExcerptCharacters - extracted.count
+                if !extracted.isEmpty && remaining > 0 {
+                    extracted.append("\n")
+                }
+                let newRemaining = maxExcerptCharacters - extracted.count
+                if newRemaining > 0 {
+                    extracted.append(contentsOf: text.prefix(newRemaining))
+                }
             }
-
-            extractedCharacterCount += text.count
-
-            if !excerpt.isEmpty, excerpt.count < limit {
-                let separator = "\n\n"
-                excerpt += separator.prefix(limit - excerpt.count)
-            }
-
-            let remaining = max(0, limit - excerpt.count)
-            let included = text.prefix(remaining)
-            excerpt += included
-            includedTextCharacterCount += included.count
         }
 
         return ContentObservation(
-            fileReference: fileReference,
-            contentType: "application/pdf",
+            fileID: fileID,
+            localReference: localReference,
+            globalReference: globalReference,
+            contentType: "pdf",
             pageCount: document.pageCount,
-            extractedCharacterCount: extractedCharacterCount,
-            excerpt: excerpt,
-            truncated: includedTextCharacterCount < extractedCharacterCount
+            extractedCharacterCount: totalCharacters,
+            excerpt: extracted,
+            truncated: totalCharacters > extracted.count
         )
     }
 }
