@@ -15,6 +15,15 @@ struct AgentContextBuilder {
         let hasComparison = candidateObservations.contains {
             $0.type == .comparison
         }
+        let inspectedPDFs = Set(candidateObservations.compactMap {
+            $0.type == .content ? $0.contentObservation?.fileReference : nil
+        })
+        let unavailablePDFs = Set(candidateObservations.filter { $0.type == .error }
+            .flatMap { $0.unavailablePDFReferences ?? [] })
+        // Capabilities come from the router's metadata, never filename text in a prompt.
+        let availablePDFs = Set(candidateObservations.filter { $0.type == .candidate }
+            .flatMap { $0.pdfFileReferences ?? [] })
+            .subtracting(inspectedPDFs).subtracting(unavailablePDFs).sorted()
         let overviewRule = hasCandidateOverview
             ? "inspectCandidate has already been used and is no longer available."
             : "inspectCandidate is available and must be the first action."
@@ -23,10 +32,12 @@ struct AgentContextBuilder {
             investigationRule = hasCandidateOverview && !hasComparison
                 ? "Use compareFiles before finishing. Exact duplicates normally do not require PDF content inspection."
                 : "Use verified duplicate evidence; do not inspect PDF content unless you can state a specific unresolved question."
-        } else if hasCandidateOverview {
+        } else if hasCandidateOverview && !availablePDFs.isEmpty {
             investigationRule = """
-            Do not use inspectCandidate again. If the overview contains a PDF and its purpose cannot be justified from filename and metadata alone, your next action MUST be inspectPDFContent for that reference. You MUST inspect it before choosing finishCandidate with review due to insufficient purpose evidence.
+            Do not use inspectCandidate again. PDFs still available for content inspection: \(availablePDFs.joined(separator: ", ")). If one of these files' purpose cannot be justified from metadata alone, inspect that reference before choosing review due to insufficient purpose evidence. Do not inspect a PDF again after a successful or failed attempt.
             """
+        } else if hasCandidateOverview {
+            investigationRule = "No uninspected supported PDFs are available. Use metadata or discovery, or finish with review when purpose remains uncertain. A Documents tag does not mean a file is a PDF."
         } else {
             investigationRule = "Inspect the candidate first. Do not inspect content until a PDF reference has been observed."
         }
@@ -41,7 +52,17 @@ struct AgentContextBuilder {
         let actionSchema: String
         let availableActions: String
         if hasCandidateOverview {
-            actionSchema = "inspectFile|compareFiles|inspectPDFContent|finishCandidate"
+            var actions: [AgentAction] = [.inspectFile, .compareFiles]
+            if !availablePDFs.isEmpty { actions.append(.inspectPDFContent) }
+            actions += [.findRelatedFiles, .inspectGlobalFile, .compareGlobalFiles, .finishCandidate]
+            actionSchema = actions.map(\.rawValue).joined(separator: "|")
+            let pdfAction = availablePDFs.isEmpty ? "" : """
+            3. inspectPDFContent
+            Extract a bounded text excerpt from one supported PDF when metadata is insufficient.
+            fileReferences must contain exactly one of: \(availablePDFs.joined(separator: ", ")).
+            Do not use this for TXT, Markdown, Pages, images, or merely to reconfirm an exact SHA256 match.
+            A generic PDF filename plus the Documents tag does not establish purpose; inspect its content before proposing review for an unknown purpose.
+            """
             availableActions = """
             1. inspectFile
             Inspect metadata and relative path for one file from a previous observation.
@@ -51,13 +72,25 @@ struct AgentContextBuilder {
             Compare two files from previous observations.
             fileReferences must contain exactly two distinct references, for example ["F1", "F2"], never [].
 
-            3. inspectPDFContent
-            Extract a bounded text excerpt from one observed PDF when metadata is insufficient.
-            fileReferences must contain exactly one PDF reference.
-            Do not use this for non-PDF files or merely to reconfirm an exact SHA256 duplicate.
-            A generic name such as document-001.pdf or scan.pdf plus the Documents tag does not establish purpose; inspect its content before finishing or proposing review.
+            \(pdfAction)
 
-            4. finishCandidate
+            4. findRelatedFiles
+            Use when you need to know whether related files may exist outside this candidate.
+            fileReferences must contain exactly one local F reference, for example ["F4"].
+            Searches the entire scanned folder catalog and returns at most 8 ranked G references.
+            Results are retrieval candidates, not proof of duplication or semantic relationship.
+            Similarity scores are not verified content evidence or probabilities.
+
+            5. inspectGlobalFile
+            Inspect snapshot metadata for exactly one G reference already shown in this candidate's observations.
+            fileReferences example: ["G22"]. This does not read semantic content.
+
+            6. compareGlobalFiles
+            Compare exactly two distinct observed G references, including at least one current candidate file.
+            fileReferences example: ["G17", "G22"]. Use the F-to-G mapping in the overview.
+            Uses metadata and existing SHA256 verification only; it does not compare semantic content.
+
+            7. finishCandidate
             Use only when enough evidence has been gathered.
             fileReferences must be [].
             """
@@ -98,6 +131,8 @@ struct AgentContextBuilder {
         - Never repeat a tool action with the same fileReferences.
         - \(iterationRule)
         - At most 8 investigation steps are allowed for this candidate.
+        - F references are local to this candidate. G references identify files within this scan snapshot only.
+        - Never guess G references or supply filesystem paths. Discover outside files with findRelatedFiles, then inspect selected results.
 
         AVAILABLE ACTIONS:
 
@@ -105,6 +140,10 @@ struct AgentContextBuilder {
 
         WHEN FINISHING:
         - Produce exactly one proposal for every file in the candidate.
+        - Proposals must use this candidate's F references only. G references and outside files are context, never additional action targets.
+        - External observations belong to the current investigation and may be cited by observation ID.
+        - Retrieval scores, matching filenames, timestamps, sizes, and categories do not prove a shared project, session, revision, or semantic relationship. Use uncertain when that question remains unresolved; discovery alone cannot justify relationship related or exactDuplicate.
+        - relationship related requires cited content inspection evidence; metadata inspection alone is insufficient.
         - Use only facts obtained through observations.
         - Choose only a disposition listed in that file's observed allowedDispositions.
         - The allowlist is a safety boundary, not a recommendation; choose from it using the evidence.

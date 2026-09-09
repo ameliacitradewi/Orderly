@@ -13,7 +13,8 @@ final class ToolRouter {
 
     func execute(
         decision: AgentDecision,
-        environment: AgentEnvironment
+        environment: AgentEnvironment,
+        observations: [AgentObservation] = []
     ) throws -> AgentObservation {
         switch decision.action {
         case .inspectCandidate:
@@ -36,6 +37,39 @@ final class ToolRouter {
                 decision,
                 environment: environment
             )
+        case .findRelatedFiles:
+            let (candidateID, evidence) = try candidateEvidence(for: decision, environment: environment)
+            guard decision.fileReferences.count == 1 else { throw AgentToolError.wrongFileCount }
+            let source = try file(reference: decision.fileReferences[0], in: evidence)
+            return try FindRelatedFilesTool().execute(
+                sourceID: source.fileID, candidateID: candidateID, environment: environment
+            )
+        case .inspectGlobalFile, .compareGlobalFiles:
+            let (candidateID, evidence) = try candidateEvidence(for: decision, environment: environment)
+            let expectedCount = decision.action == .inspectGlobalFile ? 1 : 2
+            guard decision.fileReferences.count == expectedCount,
+                  Set(decision.fileReferences).count == expectedCount else {
+                throw AgentToolError.wrongFileCount
+            }
+            let visible = environment.visibleGlobalReferences(candidateID: candidateID, observations: observations)
+            let files = try decision.fileReferences.map { reference in
+                guard let metadata = environment.filesByGlobalReference[reference] else {
+                    throw AgentToolError.invalidFileReference(reference)
+                }
+                guard visible.contains(reference) else {
+                    throw AgentToolError.unobservedGlobalReference(reference)
+                }
+                return metadata
+            }
+            let tool = GlobalFileInspectionTool()
+            if decision.action == .inspectGlobalFile {
+                return tool.inspect(file: files[0], reference: decision.fileReferences[0],
+                                    candidateID: candidateID, environment: environment)
+            }
+            guard files.contains(where: { file in evidence.files.contains { $0.fileID == file.id } }) else {
+                throw AgentToolError.comparisonOutsideCandidate
+            }
+            return tool.compare(files[0], files[1], references: decision.fileReferences, candidateID: candidateID)
         case .finishCandidate:
             throw AgentToolError.notAToolAction
         }
@@ -53,6 +87,7 @@ final class ToolRouter {
         let lines = evidence.files.map { file in
             """
             \(file.reference):
+            globalReference=\(environment.globalReferenceByFileID[file.fileID] ?? "unavailable")
             name=\(file.name)
             tag=\(file.tag.tagName)
             size=\(file.size)
@@ -66,7 +101,14 @@ final class ToolRouter {
         return AgentObservation(
             type: .candidate,
             candidateID: candidateID,
-            content: lines.joined(separator: "\n\n")
+            content: lines.joined(separator: "\n\n"),
+            globalReferences: evidence.files.compactMap { environment.globalReferenceByFileID[$0.fileID] },
+            pdfFileReferences: evidence.files.compactMap { file in
+                guard let global = environment.globalReferenceByFileID[file.fileID],
+                      let metadata = environment.filesByGlobalReference[global],
+                      InspectPDFContentTool.supports(metadata) else { return nil }
+                return file.reference
+            }
         )
     }
 
@@ -91,6 +133,7 @@ final class ToolRouter {
 
         let content = """
         reference=\(file.reference)
+        globalReference=\(environment.globalReferenceByFileID[file.fileID] ?? "unavailable")
         name=\(file.name)
         tag=\(file.tag.tagName)
         size=\(file.size)
@@ -105,7 +148,8 @@ final class ToolRouter {
         return AgentObservation(
             type: .metadata,
             candidateID: candidateID,
-            content: content
+            content: content,
+            globalReferences: environment.globalReferenceByFileID[file.fileID].map { [$0] }
         )
     }
 
@@ -128,16 +172,19 @@ final class ToolRouter {
         let a = try file(reference: refA, in: evidence)
         let b = try file(reference: refB, in: evidence)
         let sameSize = a.size == b.size
-        let verifiedDuplicate =
-            sameSize
-            && a.duplicateCopyCount > 1
-            && a.duplicateCopyCount == b.duplicateCopyCount
+        guard let globalA = environment.globalReferenceByFileID[a.fileID],
+              let globalB = environment.globalReferenceByFileID[b.fileID],
+              let metadataA = environment.filesByGlobalReference[globalA],
+              let metadataB = environment.filesByGlobalReference[globalB] else {
+            throw AgentToolError.unavailableFileMetadata
+        }
+        let comparison = FileComparisonObservation(metadataA, metadataB)
 
         let content = """
         \(a.reference) vs \(b.reference)
 
         sameSize=\(sameSize)
-        verifiedDuplicate=\(verifiedDuplicate)
+        verifiedDuplicate=\(comparison.verifiedDuplicate)
 
         fileA:
         name=\(a.name)
@@ -157,7 +204,9 @@ final class ToolRouter {
         return AgentObservation(
             type: .comparison,
             candidateID: candidateID,
-            content: content
+            content: content,
+            globalReferences: [globalA, globalB],
+            comparison: comparison
         )
     }
 

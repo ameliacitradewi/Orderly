@@ -15,8 +15,7 @@ struct InspectPDFContentTool {
         candidateID: UUID,
         analyzedFolder: URL
     ) throws -> AgentObservation {
-        guard !file.isDirectory,
-              file.extensionName.lowercased() == "pdf" else {
+        guard Self.supports(file) else {
             throw ContentInspectionError.unsupportedFileType
         }
 
@@ -47,6 +46,10 @@ struct InspectPDFContentTool {
         )
     }
 
+    static func supports(_ file: FileMetadata) -> Bool {
+        !file.isDirectory && file.extensionName.lowercased() == "pdf"
+    }
+
     private static func isInside(
         _ candidate: URL,
         root: URL
@@ -61,4 +64,3 @@ struct InspectPDFContentTool {
             && candidatePath.hasPrefix(rootPath == "/" ? "/" : rootPath + "/")
     }
 }
-

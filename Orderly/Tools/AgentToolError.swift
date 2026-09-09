@@ -7,6 +7,8 @@ enum AgentToolError: LocalizedError {
     case unavailableFileMetadata
     case wrongFileCount
     case notAToolAction
+    case unobservedGlobalReference(String)
+    case comparisonOutsideCandidate
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +24,10 @@ enum AgentToolError: LocalizedError {
             return "The tool received the wrong number of file references."
         case .notAToolAction:
             return "This agent decision does not require a tool."
+        case .unobservedGlobalReference(let reference):
+            return "Global reference \(reference) has not been observed in this investigation. Use inspectCandidate or findRelatedFiles first."
+        case .comparisonOutsideCandidate:
+            return "A global comparison must include at least one file from the current candidate."
         }
     }
 }

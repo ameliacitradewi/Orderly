@@ -185,7 +185,7 @@ final class OrderlyAgent {
                     candidateID: candidate.id,
                     content: """
                     Rejected repeated tool request: \(requestDescription).
-                    This inspection has already been performed. Use the existing observations and choose a different action or finishCandidate.
+                    This inspection has already been attempted. Use the existing observations and choose a different action or finishCandidate.
                     """
                 )
                 state.observations.append(observation)
@@ -199,13 +199,14 @@ final class OrderlyAgent {
             do {
                 observation = try toolRouter.execute(
                     decision: decision,
-                    environment: environment
+                    environment: environment,
+                    observations: state.observations
                 )
             } catch let error as AgentToolError {
                 // Argument mistakes are repairable model output, not a failed scan.
                 // Keep infrastructure errors fatal and retain the iteration limit.
                 switch error {
-                case .wrongFileCount, .invalidFileReference:
+                case .wrongFileCount, .invalidFileReference, .unobservedGlobalReference, .comparisonOutsideCandidate:
                     let validReferences = environment.evidenceByCandidate[candidate.id]?
                         .files.map(\.reference).joined(separator: ", ") ?? "none"
                     observation = AgentObservation(
@@ -215,12 +216,35 @@ final class OrderlyAgent {
                         Tool request failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
                         Valid file references for this candidate: \(validReferences).
-                        compareFiles requires exactly two distinct references; inspectFile and inspectPDFContent require exactly one.
+                        compareFiles requires two distinct F references; compareGlobalFiles requires two distinct observed G references including a current candidate file.
+                        inspectFile, inspectPDFContent, and findRelatedFiles require one F reference. inspectGlobalFile requires one observed G reference. Use G references from this candidate's observations, never paths or guessed IDs.
                         Correct the arguments and retry. This failed request is not factual evidence.
                         """
                     )
                     state.executedToolCalls.remove(signature)
                 default:
+                    throw error
+                }
+            } catch let error as ContentInspectionError {
+                guard decision.action == .inspectPDFContent else { throw error }
+                switch error {
+                case .unsupportedFileType, .cannotOpenPDF:
+                    // A failed read supplies no content evidence. Retain its signature
+                    // so the same unsupported or unreadable file is not retried.
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Content inspection failed: inspectPDFContent, fileReferences=\(decision.fileReferences).
+                        \(error.localizedDescription)
+                        No content was inspected. Do not retry PDF inspection for these references or infer their contents.
+                        inspectPDFContent supports PDF files only, not TXT, Markdown, Pages, or images.
+                        Use metadata or findRelatedFiles for further investigation, or finish with review when allowed if purpose remains unknown.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """,
+                        unavailablePDFReferences: decision.fileReferences
+                    )
+                case .fileOutsideAnalyzedFolder:
                     throw error
                 }
             }

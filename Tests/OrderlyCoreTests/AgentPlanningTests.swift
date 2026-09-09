@@ -53,7 +53,9 @@ final class AgentPlanningTests: XCTestCase {
             candidateID: candidate.id,
             content: candidate.type == .duplicate
                 ? "verifiedDuplicate=true"
-                : "Fixture observation"
+                : "Fixture observation",
+            comparison: candidate.type == .duplicate
+                ? FileComparisonObservation(fileIDs: candidate.fileIDs, verifiedDuplicate: true) : nil
         )
     }
 

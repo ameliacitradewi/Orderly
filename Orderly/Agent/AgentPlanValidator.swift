@@ -94,9 +94,17 @@ struct AgentPlanValidator {
             }
         }
 
-        let hasVerifiedDuplicateObservation = candidateObservations.contains {
+        let citedIDs = Set(finding.evidence.map(\.observationID))
+        let citedObservations = candidateObservations.filter { citedIDs.contains($0.id) && $0.type != .error }
+        let hasVerifiedDuplicateObservation = citedObservations.contains {
             $0.type == .comparison
-                && $0.content.lowercased().contains("verifiedduplicate=true")
+                && $0.comparison?.verifiedDuplicate == true
+                && !Set($0.comparison?.fileIDs ?? []).isDisjoint(with: candidate.fileIDs)
+        }
+
+        if finding.relationship == .related,
+           !citedObservations.contains(where: { $0.type == .content }) {
+            issues.append("Retrieval and snapshot metadata do not establish a semantic relationship; cite inspected content or use uncertain.")
         }
         if finding.assertsDuplicateRelationship,
            !hasVerifiedDuplicateObservation {
