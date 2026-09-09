@@ -50,7 +50,10 @@ struct FindRelatedFilesTool {
 
             \(results.isEmpty ? "No matches above the retrieval threshold." : results)
             """,
-            globalReferences: [source.reference] + best.map { $0.entry.reference }
+            globalReferences: [source.reference] + best.map { $0.entry.reference },
+            pdfGlobalReferences: best.compactMap {
+                InspectPDFContentTool.supports($0.entry.file) ? $0.entry.reference : nil
+            }
         )
     }
 
