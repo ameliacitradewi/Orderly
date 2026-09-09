@@ -95,21 +95,41 @@ struct AgentPlanValidator {
         }
 
         let citedIDs = Set(finding.evidence.map(\.observationID))
-        let citedObservations = candidateObservations.filter { citedIDs.contains($0.id) && $0.type != .error }
+        let citedObservations = candidateObservations.filter {
+            citedIDs.contains($0.id) && $0.type != .error
+        }
+
         let hasVerifiedDuplicateObservation = citedObservations.contains {
             $0.type == .comparison
                 && $0.comparison?.verifiedDuplicate == true
                 && !Set($0.comparison?.fileIDs ?? []).isDisjoint(with: candidate.fileIDs)
         }
 
-        if finding.relationship == .related,
-           !citedObservations.contains(where: { $0.type == .content }) {
-            issues.append("Retrieval and snapshot metadata do not establish a semantic relationship; cite inspected content or use uncertain.")
+        let hasRelatedDocumentComparison = citedObservations.contains { observation in
+            guard observation.type == .documentComparison,
+                  let comparison = observation.documentComparison,
+                  !Set(comparison.fileIDs).isDisjoint(with: candidate.fileIDs) else {
+                return false
+            }
+            switch comparison.semantic.relationship {
+            case .sameDocumentRevision, .sameTopic:
+                return true
+            case .unrelated, .uncertain:
+                return false
+            }
         }
+
+        if finding.relationship == .related,
+           !hasRelatedDocumentComparison {
+            issues.append(
+                "A related finding requires a cited document comparison whose semantic result is sameDocumentRevision or sameTopic and includes a current-candidate file."
+            )
+        }
+
         if finding.assertsDuplicateRelationship,
            !hasVerifiedDuplicateObservation {
             issues.append(
-                "Duplicate claims require an observation with verifiedDuplicate=true."
+                "Duplicate claims require a cited observation with verifiedDuplicate=true."
             )
         }
 
