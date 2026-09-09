@@ -35,7 +35,8 @@ struct MainView: View {
     private let analysisEngine = AnalysisEngine()
     private let evidenceEngine = EvidenceEngine()
     private let agent = OrderlyAgent(
-        llm: QwenMLXService()
+        llm: QwenMLXService(),
+        visionLanguageService: FastVLMVisionService()
     )
     private let agentPlanAdapter = AgentPlanAdapter()
     private let cleanupPlanner = CleanupPlanner()
