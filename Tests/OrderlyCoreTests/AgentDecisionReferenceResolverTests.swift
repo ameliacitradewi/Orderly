@@ -107,6 +107,53 @@ final class AgentDecisionReferenceResolverTests: XCTestCase {
         )
     }
 
+    private func inspectedContentObservations(
+        fixture: Fixture
+    ) -> [AgentObservation] {
+        let localContent = ContentObservation(
+            fileID: fixture.localFile.id,
+            localReference: "F1",
+            globalReference: fixture.localGlobalReference,
+            contentType: "application/pdf",
+            pageCount: 1,
+            extractedCharacterCount: 10,
+            excerpt: "proposal text",
+            truncated: false
+        )
+        let externalContent = ContentObservation(
+            fileID: fixture.externalFile.id,
+            localReference: nil,
+            globalReference: fixture.externalGlobalReference,
+            contentType: "application/pdf",
+            pageCount: 1,
+            extractedCharacterCount: 12,
+            excerpt: "proposal final text",
+            truncated: false
+        )
+        return [
+            AgentObservation(
+                type: .candidate,
+                candidateID: fixture.candidate.id,
+                content: "overview",
+                globalReferences: [fixture.localGlobalReference]
+            ),
+            AgentObservation(
+                type: .content,
+                candidateID: fixture.candidate.id,
+                content: "local content",
+                contentObservation: localContent,
+                globalReferences: [fixture.localGlobalReference]
+            ),
+            AgentObservation(
+                type: .content,
+                candidateID: fixture.candidate.id,
+                content: "external content",
+                contentObservation: externalContent,
+                globalReferences: [fixture.externalGlobalReference]
+            )
+        ]
+    }
+
     func testResolverFillsUniqueLocalReferenceForDiscovery() throws {
         let fixture = try fixture()
         let resolved = AgentDecisionReferenceResolver().resolve(
@@ -157,48 +204,7 @@ final class AgentDecisionReferenceResolverTests: XCTestCase {
 
     func testResolverFillsTwoInspectedPDFReferencesForDocumentComparison() throws {
         let fixture = try fixture()
-        let localContent = ContentObservation(
-            fileID: fixture.localFile.id,
-            localReference: "F1",
-            globalReference: fixture.localGlobalReference,
-            contentType: "application/pdf",
-            pageCount: 1,
-            extractedCharacterCount: 10,
-            excerpt: "proposal text",
-            truncated: false
-        )
-        let externalContent = ContentObservation(
-            fileID: fixture.externalFile.id,
-            localReference: nil,
-            globalReference: fixture.externalGlobalReference,
-            contentType: "application/pdf",
-            pageCount: 1,
-            extractedCharacterCount: 12,
-            excerpt: "proposal final text",
-            truncated: false
-        )
-        let observations = [
-            AgentObservation(
-                type: .candidate,
-                candidateID: fixture.candidate.id,
-                content: "overview",
-                globalReferences: [fixture.localGlobalReference]
-            ),
-            AgentObservation(
-                type: .content,
-                candidateID: fixture.candidate.id,
-                content: "local content",
-                contentObservation: localContent,
-                globalReferences: [fixture.localGlobalReference]
-            ),
-            AgentObservation(
-                type: .content,
-                candidateID: fixture.candidate.id,
-                content: "external content",
-                contentObservation: externalContent,
-                globalReferences: [fixture.externalGlobalReference]
-            )
-        ]
+        let observations = inspectedContentObservations(fixture: fixture)
 
         let resolved = AgentDecisionReferenceResolver().resolve(
             decision(.compareDocumentContent),
@@ -214,6 +220,49 @@ final class AgentDecisionReferenceResolverTests: XCTestCase {
                 fixture.externalGlobalReference
             ])
         )
+    }
+
+    func testResolverDoesNotRepairAlreadyComparedDocumentPair() throws {
+        let fixture = try fixture()
+        var observations = inspectedContentObservations(fixture: fixture)
+        observations.append(
+            AgentObservation(
+                type: .documentComparison,
+                candidateID: fixture.candidate.id,
+                content: "semanticRelationship=sameDocumentRevision",
+                globalReferences: [
+                    fixture.externalGlobalReference,
+                    fixture.localGlobalReference
+                ],
+                documentComparison: DocumentComparisonObservation(
+                    fileIDs: [fixture.externalFile.id, fixture.localFile.id],
+                    globalReferences: [
+                        fixture.externalGlobalReference,
+                        fixture.localGlobalReference
+                    ],
+                    deterministic: DeterministicDocumentComparison(
+                        tokenOverlap: 0.8,
+                        shingleSimilarity: 0.6,
+                        lengthDifference: 0.1,
+                        comparedCharacterCount: 22
+                    ),
+                    semantic: DocumentSemanticAssessment(
+                        relationship: .sameDocumentRevision,
+                        summary: "The documents appear to be revisions of the same proposal.",
+                        confidence: 0.9
+                    )
+                )
+            )
+        )
+
+        let resolved = AgentDecisionReferenceResolver().resolve(
+            decision(.compareDocumentContent),
+            candidate: fixture.candidate,
+            environment: fixture.environment,
+            observations: observations
+        )
+
+        XCTAssertTrue(resolved.fileReferences.isEmpty)
     }
 
     func testResolverDoesNotOverrideExplicitReferences() throws {
