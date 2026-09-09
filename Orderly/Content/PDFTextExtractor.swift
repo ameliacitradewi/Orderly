@@ -4,9 +4,7 @@ import PDFKit
 struct PDFTextExtractor: ContentInspectionService {
     func inspectPDF(
         at url: URL,
-        fileID: UUID,
-        localReference: String?,
-        globalReference: String,
+        fileReference: String,
         maxExcerptCharacters: Int
     ) throws -> ContentObservation {
         guard let document = PDFDocument(url: url) else {
@@ -22,22 +20,21 @@ struct PDFTextExtractor: ContentInspectionService {
             totalCharacters += text.count
 
             if extracted.count < maxExcerptCharacters {
-                let remaining = maxExcerptCharacters - extracted.count
-                if !extracted.isEmpty && remaining > 0 {
-                    extracted.append("\n")
+                let separator = extracted.isEmpty ? "" : "\n"
+                let remainingBeforeSeparator = maxExcerptCharacters - extracted.count
+                if !separator.isEmpty && remainingBeforeSeparator > 0 {
+                    extracted.append(separator)
                 }
-                let newRemaining = maxExcerptCharacters - extracted.count
-                if newRemaining > 0 {
-                    extracted.append(contentsOf: text.prefix(newRemaining))
+                let remaining = maxExcerptCharacters - extracted.count
+                if remaining > 0 {
+                    extracted.append(contentsOf: text.prefix(remaining))
                 }
             }
         }
 
         return ContentObservation(
-            fileID: fileID,
-            localReference: localReference,
-            globalReference: globalReference,
-            contentType: "pdf",
+            fileReference: fileReference,
+            contentType: "application/pdf",
             pageCount: document.pageCount,
             extractedCharacterCount: totalCharacters,
             excerpt: extracted,
