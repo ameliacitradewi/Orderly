@@ -11,12 +11,27 @@ final class OrderlyAgent {
 
     init(
         llm: any LLMService,
+        visionLanguageService: (any VisionLanguageService)? = nil,
         toolRouter: ToolRouter? = nil
     ) {
         self.llm = llm
-        self.toolRouter = toolRouter ?? ToolRouter(
-            documentSemanticAnalyzer: QwenDocumentSemanticAnalyzer(llm: llm)
-        )
+        if let toolRouter {
+            self.toolRouter = toolRouter
+        } else {
+            let imageSemanticAnalyzer = visionLanguageService.map {
+                StructuredImageSemanticAnalyzer(
+                    visionModel: $0,
+                    textModel: llm
+                )
+            }
+            self.toolRouter = ToolRouter(
+                documentSemanticAnalyzer: QwenDocumentSemanticAnalyzer(llm: llm),
+                imageSemanticAnalyzer: imageSemanticAnalyzer,
+                imagePairSemanticAnalyzer: imageSemanticAnalyzer == nil
+                    ? nil
+                    : QwenImagePairSemanticAnalyzer(llm: llm)
+            )
+        }
     }
 
     func run(
@@ -127,11 +142,6 @@ final class OrderlyAgent {
                     observations: state.observations
                 )
 
-                // Natural-language directionality is presentation, not a reason to
-                // spend another expensive agent iteration when the structured
-                // comparison already proves only a symmetric revision relationship.
-                // Repair only this single issue, never destructive proposals or any
-                // other validation failure.
                 if Self.onlyUnsupportedRevisionOrdering(issues),
                    !finding.proposals.contains(where: { $0.disposition == .trash }) {
                     let groundedFinding = Self.canonicalizeRevisionFinding(finding)
@@ -241,8 +251,6 @@ final class OrderlyAgent {
                     observations: state.observations
                 )
             } catch let error as AgentToolError {
-                // Argument mistakes are repairable model output, not a failed scan.
-                // Keep infrastructure errors fatal and retain the iteration limit.
                 switch error {
                 case .wrongFileCount, .invalidFileReference, .unobservedGlobalReference, .comparisonOutsideCandidate:
                     let localReferences = environment.evidenceByCandidate[candidate.id]?
@@ -266,6 +274,15 @@ final class OrderlyAgent {
                     )
                     .subtracting(localGlobalReferences)
                     .sorted()
+                    let observedExternalImageReferences = Set(
+                        state.observations
+                            .filter {
+                                $0.candidateID == candidate.id && $0.type != .error
+                            }
+                            .flatMap { $0.imageGlobalReferences ?? [] }
+                    )
+                    .subtracting(localGlobalReferences)
+                    .sorted()
                     let inspectedPDFReferences = Set(
                         state.observations
                             .filter {
@@ -274,10 +291,18 @@ final class OrderlyAgent {
                             .compactMap(\.contentObservation)
                             .map(\.globalReference)
                     ).sorted()
+                    let inspectedImageReferences = Set(
+                        state.observations
+                            .filter {
+                                $0.candidateID == candidate.id && $0.type == .imageContent
+                            }
+                            .compactMap(\.imageSemantic)
+                            .map(\.globalReference)
+                    ).sorted()
 
                     let actionSpecificRepair: String
                     switch decision.action {
-                    case .inspectFile, .inspectPDFContent, .findRelatedFiles:
+                    case .inspectFile, .inspectPDFContent, .inspectImageContent, .findRelatedFiles:
                         actionSpecificRepair = "Retry with exactly one local F reference from: \(Self.render(localReferences))."
                     case .compareFiles:
                         actionSpecificRepair = "Retry with exactly two distinct local F references from: \(Self.render(localReferences))."
@@ -285,10 +310,14 @@ final class OrderlyAgent {
                         actionSpecificRepair = "Retry with exactly one already-observed G reference from: \(Self.render(visibleGlobalReferences))."
                     case .inspectGlobalPDFContent:
                         actionSpecificRepair = "Retry with exactly one observed external PDF G reference from: \(Self.render(observedExternalPDFReferences))."
+                    case .inspectGlobalImageContent:
+                        actionSpecificRepair = "Retry with exactly one observed external image G reference from: \(Self.render(observedExternalImageReferences))."
                     case .compareGlobalFiles:
                         actionSpecificRepair = "Retry with exactly two distinct observed G references from: \(Self.render(visibleGlobalReferences)); at least one must belong to the current candidate."
                     case .compareDocumentContent:
                         actionSpecificRepair = "Retry with exactly two distinct inspected PDF G references from: \(Self.render(inspectedPDFReferences)); at least one must belong to the current candidate."
+                    case .compareImageContent:
+                        actionSpecificRepair = "Retry with exactly two distinct inspected image G references from: \(Self.render(inspectedImageReferences)); at least one must belong to the current candidate."
                     case .inspectCandidate, .finishCandidate:
                         actionSpecificRepair = "Choose an available action using the exact reference shape shown in the prompt."
                     }
@@ -316,8 +345,6 @@ final class OrderlyAgent {
                 }
                 switch error {
                 case .unsupportedFileType, .cannotOpenPDF:
-                    // A failed read supplies no content evidence. Retain its signature
-                    // so the same unsupported or unreadable file is not retried.
                     observation = AgentObservation(
                         type: .error,
                         candidateID: candidate.id,
@@ -325,7 +352,6 @@ final class OrderlyAgent {
                         Content inspection failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
                         No content was inspected. Do not retry PDF inspection for these references or infer their contents.
-                        PDF content inspection supports PDF files only, not TXT, Markdown, Pages, or images.
                         Use metadata or findRelatedFiles for further investigation, or finish with review when allowed if purpose remains unknown.
                         This error is feedback only and cannot be cited as factual evidence.
                         """,
@@ -354,6 +380,71 @@ final class OrderlyAgent {
                         content: """
                         The semantic comparison model returned an invalid structured response.
                         You may retry compareDocumentContent once after considering the existing evidence, or finish with uncertain/review when appropriate.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """
+                    )
+                    state.executedToolCalls.remove(signature)
+                }
+            } catch let error as ImageEvidenceError {
+                guard decision.action == .inspectImageContent
+                        || decision.action == .inspectGlobalImageContent
+                        || decision.action == .compareImageContent else {
+                    throw error
+                }
+                switch error {
+                case .fileOutsideAnalyzedFolder:
+                    throw error
+                default:
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Image inspection failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
+                        \(error.localizedDescription)
+                        Do not infer visual content from this failure. Use metadata/discovery or finish with review when appropriate.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """,
+                        unavailableImageReferences: decision.action == .compareImageContent
+                            ? nil
+                            : decision.fileReferences
+                    )
+                }
+            } catch let error as ImageSemanticError {
+                guard decision.action == .inspectImageContent
+                        || decision.action == .inspectGlobalImageContent else {
+                    throw error
+                }
+                observation = AgentObservation(
+                    type: .error,
+                    candidateID: candidate.id,
+                    content: """
+                    The hybrid image semantic pipeline could not produce a valid typed observation for fileReferences=\(decision.fileReferences).
+                    \(error.localizedDescription)
+                    Do not infer image meaning from this failure. Continue with deterministic metadata/discovery or finish with review when appropriate.
+                    This error is feedback only and cannot be cited as factual evidence.
+                    """,
+                    unavailableImageReferences: decision.fileReferences
+                )
+            } catch let error as ImageComparisonError {
+                switch error {
+                case .missingImageContentEvidence:
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Image comparison failed because both requested G references do not yet have imageContent observations.
+                        Inspect the local image with inspectImageContent and any external image with inspectGlobalImageContent, then retry compareImageContent.
+                        This error is feedback only and cannot be cited as factual evidence.
+                        """
+                    )
+                    state.executedToolCalls.remove(signature)
+                case .invalidSemanticResponse:
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        The image relationship model returned an invalid structured response.
+                        You may retry compareImageContent once or finish with uncertain/review when appropriate.
                         This error is feedback only and cannot be cited as factual evidence.
                         """
                     )
