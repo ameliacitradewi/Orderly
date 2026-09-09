@@ -10,8 +10,6 @@ struct AgentEvaluationReport: Codable, Sendable, Equatable {
     let totalAgentSteps: Int
     let maxStepsPerCandidate: Int
     let averageStepsPerCandidate: Double
-    let totalPromptCharacters: Int
-    let averagePromptCharactersPerStep: Double
     let toolCallCount: Int
     let toolCallsByAction: [String: Int]
     let observationCount: Int
@@ -32,8 +30,6 @@ struct AgentEvaluator {
         state: AgentState,
         analysis: AnalysisResult
     ) -> AgentEvaluationReport {
-        let totalSteps = state.stepCountByCandidate.values.reduce(0, +)
-        let totalPromptCharacters = state.promptCharacterCountByCandidate.values.reduce(0, +)
         let toolCalls = Array(state.executedToolCalls)
         let toolCallsByAction = Dictionary(
             grouping: toolCalls,
@@ -45,6 +41,22 @@ struct AgentEvaluator {
             $0.content.contains("Rejected repeated tool request:")
         }
 
+        // Every non-fatal investigation action produces exactly one observation.
+        // A successful finishCandidate produces the finding instead. Therefore
+        // observations + findings is a stable run-level step count without adding
+        // mutable instrumentation to the safety-critical agent loop.
+        let stepsByCandidate: [UUID: Int] = Dictionary(
+            uniqueKeysWithValues: analysis.candidates.map { candidate in
+                let observationSteps = state.observations.filter {
+                    $0.candidateID == candidate.id
+                }.count
+                let finishSteps = state.findings.contains {
+                    $0.candidateID == candidate.id
+                } ? 1 : 0
+                return (candidate.id, observationSteps + finishSteps)
+            }
+        )
+        let totalSteps = stepsByCandidate.values.reduce(0, +)
         let candidateCount = analysis.candidates.count
         let completionRate = candidateCount == 0
             ? 1
@@ -52,19 +64,14 @@ struct AgentEvaluator {
         let averageSteps = candidateCount == 0
             ? 0
             : Double(totalSteps) / Double(candidateCount)
-        let averagePromptCharacters = totalSteps == 0
-            ? 0
-            : Double(totalPromptCharacters) / Double(totalSteps)
 
         return AgentEvaluationReport(
             candidateCount: candidateCount,
             findingCount: state.findings.count,
             completionRate: completionRate,
             totalAgentSteps: totalSteps,
-            maxStepsPerCandidate: state.stepCountByCandidate.values.max() ?? 0,
+            maxStepsPerCandidate: stepsByCandidate.values.max() ?? 0,
             averageStepsPerCandidate: averageSteps,
-            totalPromptCharacters: totalPromptCharacters,
-            averagePromptCharactersPerStep: averagePromptCharacters,
             toolCallCount: toolCalls.count,
             toolCallsByAction: toolCallsByAction,
             observationCount: state.observations.count,
@@ -91,12 +98,11 @@ extension AgentEvaluationReport {
         agentSteps=\(totalAgentSteps)
         maxStepsPerCandidate=\(maxStepsPerCandidate)
         averageStepsPerCandidate=\(Self.number(averageStepsPerCandidate))
-        promptCharacters=\(totalPromptCharacters)
-        averagePromptCharactersPerStep=\(Self.number(averagePromptCharactersPerStep))
         toolCalls=\(toolCallCount)
         toolCallsByAction=\(actionSummary.isEmpty ? "none" : actionSummary)
         observations=\(observationCount)
         errorObservations=\(errorObservationCount)
+        invalidOrFeedbackObservationRate=\(Self.number(invalidOrFeedbackObservationRate))
         repeatedToolRejections=\(repeatedToolRejectionCount)
         proposals=\(proposalCount)
         reviewProposals=\(reviewProposalCount)
