@@ -129,7 +129,7 @@ struct AgentPlanValidator {
         if finding.assertsDuplicateRelationship,
            !hasVerifiedDuplicateObservation {
             issues.append(
-                "Duplicate claims require a cited observation with verifiedDuplicate=true."
+                "Duplicate claims require an observation with verifiedDuplicate=true."
             )
         }
 
