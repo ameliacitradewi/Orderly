@@ -214,7 +214,7 @@ final class DocumentComparisonTests: XCTestCase {
         let semantic = StubSemanticAnalyzer(
             DocumentSemanticAssessment(
                 relationship: .sameDocumentRevision,
-                summary: "The second document is a revised version of the same proposal.",
+                summary: "The documents appear to be revisions of the same proposal.",
                 confidence: 0.94
             )
         )
@@ -309,7 +309,7 @@ final class DocumentComparisonTests: XCTestCase {
         let semantic = StubSemanticAnalyzer(
             DocumentSemanticAssessment(
                 relationship: .sameDocumentRevision,
-                summary: "Revision relationship is supported.",
+                summary: "The documents appear to be revisions of the same proposal.",
                 confidence: 0.9
             )
         )
@@ -360,7 +360,7 @@ final class DocumentComparisonTests: XCTestCase {
         let finding = AgentFinding(
             candidateID: candidateID,
             relationship: .related,
-            summary: "The discovered PDF appears to be a revision of the current proposal.",
+            summary: "The PDFs appear to be revisions of the same underlying proposal.",
             evidence: [
                 AgentEvidenceReference(
                     observationID: compared.id,
@@ -404,5 +404,164 @@ final class DocumentComparisonTests: XCTestCase {
         XCTAssertTrue(issues.contains {
             $0.contains("requires a cited document comparison")
         })
+    }
+
+    func testValidatorRejectsDirectionalRevisionClaimWithoutOrderingEvidence() async throws {
+        let fixture = fixture()
+        let candidateID = fixture.firstCandidate.id
+        let comparison = AgentObservation(
+            type: .documentComparison,
+            candidateID: candidateID,
+            content: "semanticRelationship=sameDocumentRevision",
+            globalReferences: ["G1", "G2"],
+            documentComparison: DocumentComparisonObservation(
+                fileIDs: [fixture.firstFile.id, fixture.secondFile.id],
+                globalReferences: ["G1", "G2"],
+                deterministic: DeterministicDocumentComparison(
+                    tokenOverlap: 0.8,
+                    shingleSimilarity: 0.7,
+                    lengthDifference: 0.1,
+                    comparedCharacterCount: 500
+                ),
+                semantic: DocumentSemanticAssessment(
+                    relationship: .sameDocumentRevision,
+                    summary: "The documents appear to be revisions of the same proposal.",
+                    confidence: 0.9
+                )
+            )
+        )
+        let finding = AgentFinding(
+            candidateID: candidateID,
+            relationship: .related,
+            summary: "The discovered PDF appears to be a revision of the current proposal.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: comparison.id,
+                    description: "The semantic comparison classified the pair as revisions of the same document."
+                )
+            ],
+            proposals: [
+                AgentFileProposal(
+                    fileReference: "F1",
+                    disposition: .review,
+                    reason: "Review the revision relationship."
+                )
+            ],
+            confidence: 0.9
+        )
+        let candidateEvidence = try XCTUnwrap(
+            AgentEnvironment(analysis: fixture.analysis, evidence: fixture.evidence)
+                .evidenceByCandidate[candidateID]
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: fixture.firstCandidate,
+            evidence: candidateEvidence,
+            observations: [comparison]
+        )
+
+        XCTAssertTrue(issues.contains {
+            $0.contains("symmetric relationship only")
+        })
+    }
+
+    func testContextDoesNotOfferAlreadyComparedDocumentPairAgain() {
+        let fixture = fixture()
+        let candidate = fixture.firstCandidate
+        let overview = AgentObservation(
+            type: .candidate,
+            candidateID: candidate.id,
+            content: "F1 globalReference=G1",
+            globalReferences: ["G1"],
+            pdfFileReferences: ["F1"],
+            pdfGlobalReferences: ["G1"]
+        )
+        let discovery = AgentObservation(
+            type: .discovery,
+            candidateID: candidate.id,
+            content: "G2 discovered",
+            globalReferences: ["G1", "G2"],
+            pdfGlobalReferences: ["G2"]
+        )
+        let localContent = AgentObservation(
+            type: .content,
+            candidateID: candidate.id,
+            content: "G1 content",
+            contentObservation: ContentObservation(
+                fileID: fixture.firstFile.id,
+                localReference: "F1",
+                globalReference: "G1",
+                contentType: "application/pdf",
+                pageCount: 1,
+                extractedCharacterCount: 100,
+                excerpt: "proposal text",
+                truncated: false
+            ),
+            globalReferences: ["G1"]
+        )
+        let externalContent = AgentObservation(
+            type: .content,
+            candidateID: candidate.id,
+            content: "G2 content",
+            contentObservation: ContentObservation(
+                fileID: fixture.secondFile.id,
+                localReference: nil,
+                globalReference: "G2",
+                contentType: "application/pdf",
+                pageCount: 1,
+                extractedCharacterCount: 120,
+                excerpt: "proposal text revised",
+                truncated: false
+            ),
+            globalReferences: ["G2"]
+        )
+        let comparison = AgentObservation(
+            type: .documentComparison,
+            candidateID: candidate.id,
+            content: "semanticRelationship=sameDocumentRevision",
+            globalReferences: ["G2", "G1"],
+            documentComparison: DocumentComparisonObservation(
+                fileIDs: [fixture.secondFile.id, fixture.firstFile.id],
+                globalReferences: ["G2", "G1"],
+                deterministic: DeterministicDocumentComparison(
+                    tokenOverlap: 0.8,
+                    shingleSimilarity: 0.7,
+                    lengthDifference: 0.1,
+                    comparedCharacterCount: 220
+                ),
+                semantic: DocumentSemanticAssessment(
+                    relationship: .sameDocumentRevision,
+                    summary: "The documents appear to be revisions of the same proposal.",
+                    confidence: 0.9
+                )
+            )
+        )
+        var state = AgentState(
+            goal: "Safely investigate clutter.",
+            pendingCandidates: [candidate]
+        )
+        state.currentCandidate = candidate
+        state.iteration = 6
+        state.observations = [
+            overview,
+            discovery,
+            localContent,
+            externalContent,
+            comparison
+        ]
+
+        let prompt = AgentContextBuilder().build(
+            state: state,
+            candidate: candidate
+        )
+
+        XCTAssertTrue(prompt.contains(
+            "Semantic comparison already exists for every eligible inspected PDF pair."
+        ))
+        XCTAssertTrue(prompt.contains(
+            #""action": "inspectFile|compareFiles|findRelatedFiles|inspectGlobalFile|compareGlobalFiles|finishCandidate""#
+        ))
+        XCTAssertFalse(prompt.contains("Allowed uncompared pairs:"))
     }
 }
