@@ -36,6 +36,16 @@ struct AgentDecisionReferenceResolver {
                 .filter { $0.type == .error }
                 .flatMap { $0.unavailablePDFReferences ?? [] }
         )
+        let comparedDocumentPairKeys = Set(
+            candidateObservations.compactMap { observation -> String? in
+                guard observation.type == .documentComparison,
+                      let references = observation.documentComparison?.globalReferences,
+                      references.count == 2 else {
+                    return nil
+                }
+                return Self.pairKey(references)
+            }
+        )
 
         let candidatePDFs = Set(
             candidateObservations
@@ -86,8 +96,10 @@ struct AgentDecisionReferenceResolver {
 
         case .compareDocumentContent:
             let inspected = inspectedGlobalPDFs.sorted()
+            let key = Self.pairKey(inspected)
             repairedReferences = inspected.count == 2
                 && !Set(inspected).isDisjoint(with: localGlobalReferences)
+                && !comparedDocumentPairKeys.contains(key)
                 ? inspected
                 : nil
 
@@ -114,5 +126,9 @@ struct AgentDecisionReferenceResolver {
 
     private func exactlyOne(_ references: [String]) -> [String]? {
         references.count == 1 ? references : nil
+    }
+
+    private static func pairKey(_ references: [String]) -> String {
+        references.sorted().joined(separator: "|")
     }
 }
