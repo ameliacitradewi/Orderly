@@ -241,6 +241,7 @@ struct AgentContextBuilder {
         exactDuplicate, related, grouping, artifact, unrelated, uncertain.
 
         PREVIOUS OBSERVATIONS:
+
         \(observations.isEmpty ? "None." : observations)
 
         ITERATION:
