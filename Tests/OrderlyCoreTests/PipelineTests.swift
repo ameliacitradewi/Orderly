@@ -354,6 +354,40 @@ final class PipelineTests: XCTestCase {
         XCTAssertThrowsError(try DeletionVerifier.verify(file: source, lookup: lookup, root: root))
     }
 
+    func testRuleBasedFallbackStillBuildsSafePlan() async throws {
+        let root = try fixture()
+        let older = try file("old.txt", in: root, time: 1)
+        let newer = try file("new.txt", in: root, time: 2)
+        let scan = try await DuplicateDetector().findDuplicates(in: [older, newer])
+        let candidates = ClutterAnalyzer().analyze(files: scan.files, duplicateGroups: scan.groups)
+        let evidence = EvidenceEngine().buildEvidence(candidates: candidates, files: scan.files,
+                                                      duplicateGroups: scan.groups, rootFolder: root)
+
+        let session = OrderlyModelSession()
+        let recommendations = evidence.map { item in
+            let result = session.ruleBasedDecisions(for: item.files)
+            return CleanupRecommendation(candidateID: item.candidateID.uuidString, title: "Rules",
+                                         explanation: "Fixture", fileDecisions: result.decisions,
+                                         destinationFolderName: "Documents", confidence: 1)
+        }
+        let modelPlan = ModelCleanupPlan(summary: "Used extension and SHA256 rules.",
+                                         recommendations: recommendations)
+        let cleanup = CleanupPlanBuilder().buildPlan(folder: root, candidates: candidates,
+                                                     modelPlan: modelPlan, files: scan.files)
+
+        XCTAssertTrue(cleanup.actions.filter { $0.type == .trash }.isEmpty)
+        let decisions = recommendations.flatMap(\.fileDecisions)
+        for item in evidence {
+            let result = session.ruleBasedDecisions(for: item.files)
+            XCTAssertTrue(ModelPlanValidator().issues(decisions: result.decisions, files: item.files).isEmpty)
+            for (file, decision) in zip(item.files, result.decisions) {
+                XCTAssertEqual(decision.disposition, file.fileID == newer.id ? .keep : .review)
+            }
+        }
+        XCTAssertEqual(decisions.count, 2)
+        XCTAssertTrue(modelPlan.summary.contains("extension and SHA256 rules"))
+    }
+
     func testDocumentPackagesUseContentAndRelativePathsAndScannerSkipsSymlinks() async throws {
         let root = try fixture()
         _ = try file("a.pages/Index/document", in: root)

@@ -118,7 +118,8 @@ final class ToolRouter {
             environment: environment
         )
 
-        guard decision.fileReferences.count == 2 else {
+        guard decision.fileReferences.count == 2,
+              Set(decision.fileReferences).count == 2 else {
             throw AgentToolError.wrongFileCount
         }
 

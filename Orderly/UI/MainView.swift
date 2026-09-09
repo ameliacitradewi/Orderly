@@ -376,6 +376,9 @@ struct MainView: View {
                 } catch is CancellationError {
                     return
                 } catch {
+                    print("======== AGENT PLANNING FAILED ========")
+                    print(String(reflecting: error))
+                    print(error.localizedDescription)
 
                     await MainActor.run {
 

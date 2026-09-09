@@ -33,6 +33,42 @@ struct AgentContextBuilder {
         let iterationRule = state.iteration == 8
             ? "This is the final allowed step. You MUST choose finishCandidate."
             : "Finish as soon as the evidence is sufficient."
+        let candidateSemantics = candidate.type == .grouping
+            ? """
+            The internal type "grouping" means category batch only. These files share a broad file category, but are not known to be semantically related. Do not claim they share a project, session, subject, or duplicate relationship unless tool observations establish it.
+            """
+            : "The candidate type describes why deterministic analysis selected it; still ground every claim in observations."
+        let actionSchema: String
+        let availableActions: String
+        if hasCandidateOverview {
+            actionSchema = "inspectFile|compareFiles|inspectPDFContent|finishCandidate"
+            availableActions = """
+            1. inspectFile
+            Inspect metadata and relative path for one file from a previous observation.
+            fileReferences must contain exactly one reference.
+
+            2. compareFiles
+            Compare two files from previous observations.
+            fileReferences must contain exactly two distinct references, for example ["F1", "F2"], never [].
+
+            3. inspectPDFContent
+            Extract a bounded text excerpt from one observed PDF when metadata is insufficient.
+            fileReferences must contain exactly one PDF reference.
+            Do not use this for non-PDF files or merely to reconfirm an exact SHA256 duplicate.
+            A generic name such as document-001.pdf or scan.pdf plus the Documents tag does not establish purpose; inspect its content before finishing or proposing review.
+
+            4. finishCandidate
+            Use only when enough evidence has been gathered.
+            fileReferences must be [].
+            """
+        } else {
+            actionSchema = "inspectCandidate"
+            availableActions = """
+            1. inspectCandidate
+            Get an overview of every file in this candidate.
+            fileReferences must be [].
+            """
+        }
 
         return """
         You are the investigation and planning agent for Orderly, a macOS file cleanup application.
@@ -44,6 +80,9 @@ struct AgentContextBuilder {
         id=\(candidate.id.uuidString)
         type=\(candidate.type.rawValue)
         reason=\(candidate.reason)
+
+        CANDIDATE SEMANTICS:
+        \(candidateSemantics)
 
         YOUR JOB:
         Investigate this candidate using the available read-only tools.
@@ -62,28 +101,7 @@ struct AgentContextBuilder {
 
         AVAILABLE ACTIONS:
 
-        1. inspectCandidate
-        \(overviewRule)
-        Get an overview of every file in this candidate.
-        fileReferences must be [].
-
-        2. inspectFile
-        Inspect metadata and relative path for one file from a previous observation.
-        fileReferences must contain exactly one reference.
-
-        3. compareFiles
-        Compare two files from previous observations.
-        fileReferences must contain exactly two references.
-
-        4. inspectPDFContent
-        Extract a bounded text excerpt from one observed PDF when metadata is insufficient.
-        fileReferences must contain exactly one PDF reference.
-        Do not use this for non-PDF files or merely to reconfirm an exact SHA256 duplicate.
-        A generic name such as document-001.pdf or scan.pdf plus the Documents tag does not establish purpose; inspect its content before finishing or proposing review.
-
-        5. finishCandidate
-        Use only when enough evidence has been gathered.
-        fileReferences must be [].
+        \(availableActions)
 
         WHEN FINISHING:
         - Produce exactly one proposal for every file in the candidate.
@@ -95,7 +113,9 @@ struct AgentContextBuilder {
         - If evidence remains insufficient, use review when it is allowed.
         - A verified duplicate group must retain at least one copy; its designated keeper can only be kept.
         - finding.candidateID must equal \(candidate.id.uuidString).
-        - Every evidence item must cite an actual observation id shown below.
+        - Every evidence item must cite a factual observation id shown below; error observations are validator feedback and cannot be cited.
+        - One observation may support multiple distinct evidence descriptions. Do not repeat an identical observationID + description pair.
+        - Do not use relationship exactDuplicate or positively describe files as duplicates unless a tool observation explicitly contains verifiedDuplicate=true. duplicateCopies=0 is not duplicate evidence.
         - confidence must be between 0.0 and 1.0.
 
         Relationships:
@@ -111,7 +131,7 @@ struct AgentContextBuilder {
         Return JSON only:
 
         {
-          "action": "inspectCandidate|inspectFile|compareFiles|inspectPDFContent|finishCandidate",
+          "action": "\(actionSchema)",
           "candidateID": "\(candidate.id.uuidString)",
           "fileReferences": [],
           "reason": "why this is the best next step",

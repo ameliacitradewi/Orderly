@@ -6,7 +6,6 @@ enum AgentError: LocalizedError {
     case maximumIterationsReached
     case finishWithoutFinding
     case invalidConfidence
-    case invalidFinding([String])
 
     var errorDescription: String? {
         switch self {
@@ -20,8 +19,6 @@ enum AgentError: LocalizedError {
             return "The agent finished without producing a finding."
         case .invalidConfidence:
             return "The agent returned an invalid confidence value."
-        case .invalidFinding(let issues):
-            return "Qwen returned an invalid agent finding: \(issues.joined(separator: ", "))"
         }
     }
 }

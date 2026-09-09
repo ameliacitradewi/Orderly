@@ -23,14 +23,21 @@ final class AgentLoopTests: XCTestCase {
             }
 
             let response = responses.removeFirst()
-            let latestObservationID = prompt
-                .split(separator: "\n")
-                .compactMap { line -> UUID? in
-                    let value = line.trimmingCharacters(in: .whitespaces)
-                    guard value.hasPrefix("id=") else { return nil }
-                    return UUID(uuidString: String(value.dropFirst(3)))
+            var pendingObservationID: UUID?
+            var latestObservationID: UUID?
+            for line in prompt.split(separator: "\n") {
+                let value = line.trimmingCharacters(in: .whitespaces)
+                if value.hasPrefix("id=") {
+                    pendingObservationID = UUID(
+                        uuidString: String(value.dropFirst(3))
+                    )
+                } else if value.hasPrefix("type=") {
+                    if value != "type=error" {
+                        latestObservationID = pendingObservationID
+                    }
+                    pendingObservationID = nil
                 }
-                .last
+            }
 
             guard let latestObservationID else { return response }
             return response.replacingOccurrences(
@@ -216,12 +223,66 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(llm.prompts.count, 4)
 
         XCTAssertTrue(llm.prompts[0].contains("inspectCandidate is available"))
+        XCTAssertTrue(llm.prompts[0].contains(#""action": "inspectCandidate""#))
+        XCTAssertTrue(llm.prompts[0].contains(
+            #"The internal type "grouping" means category batch only."#
+        ))
         XCTAssertTrue(llm.prompts[1].contains("inspectCandidate has already been used"))
+        XCTAssertFalse(llm.prompts[1].contains("1. inspectCandidate"))
+        XCTAssertTrue(llm.prompts[1].contains(
+            #""action": "inspectFile|compareFiles|inspectPDFContent|finishCandidate""#
+        ))
         XCTAssertTrue(llm.prompts[1].contains("Observation:"))
         XCTAssertTrue(llm.prompts[1].contains("name=file-1.pdf"))
         XCTAssertTrue(llm.prompts[2].contains("PREVIOUS OBSERVATIONS:\n\nNone."))
         XCTAssertFalse(llm.prompts[2].contains("name=file-1.pdf"))
         XCTAssertTrue(llm.prompts[3].contains("name=file-2.pdf"))
+    }
+
+    func testInvalidCompareArgumentsBecomeFeedbackAndPlanCanComplete() async throws {
+        for references in [[], ["F1"], ["F1", "missing"], ["F1", "F1"]] as [[String]] {
+            let fixture = fixture()
+            let candidate = fixture.candidates[0]
+            let llm = ScriptedLLM(responses: [
+                try response(action: .inspectCandidate, candidateID: candidate.id),
+                try response(action: .compareFiles, candidateID: candidate.id, references: references),
+                try response(action: .finishCandidate, candidateID: candidate.id,
+                             finding: finding(candidateID: candidate.id))
+            ])
+
+            let state = try await OrderlyAgent(llm: llm).run(
+                analysis: fixture.analysis, evidence: fixture.evidence
+            )
+
+            XCTAssertEqual(state.status, .completed)
+            XCTAssertEqual(state.findings.count, 1)
+            XCTAssertEqual(state.executedToolCalls.count, 1)
+            XCTAssertEqual(state.observations.filter { $0.type == .error }.count, 1)
+            XCTAssertFalse(state.observations.contains { $0.type == .comparison })
+            XCTAssertTrue(llm.prompts[2].contains("Tool request failed: compareFiles"))
+            XCTAssertTrue(llm.prompts[2].contains("Valid file references for this candidate: F1"))
+            XCTAssertEqual(state.findings.first?.evidence.first?.observationID,
+                           state.observations.first?.id)
+        }
+    }
+
+    func testInvalidToolRequestsStillStopAtIterationLimit() async throws {
+        let fixture = fixture()
+        let invalid = try response(action: .compareFiles,
+                                   candidateID: fixture.candidates[0].id)
+        let llm = ScriptedLLM(responses: Array(repeating: invalid, count: 8))
+        do {
+            _ = try await OrderlyAgent(llm: llm).run(
+                analysis: fixture.analysis, evidence: fixture.evidence
+            )
+            XCTFail("Expected maximumIterationsReached")
+        } catch {
+            guard case AgentError.maximumIterationsReached = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+        XCTAssertEqual(llm.prompts.count, 8)
+        XCTAssertTrue(llm.prompts[7].contains("Tool request failed: compareFiles"))
     }
 
     func testAgentRejectsDecisionForAnotherCandidate() async throws {
@@ -323,7 +384,7 @@ final class AgentLoopTests: XCTestCase {
         }
     }
 
-    func testAgentRejectsUnsafeStructuredFinding() async throws {
+    func testAgentRepairsFindingAfterValidationFeedback() async throws {
         let fixture = fixture()
         let candidate = fixture.candidates[0]
         let unsafeFinding = AgentFinding(
@@ -347,26 +408,46 @@ final class AgentLoopTests: XCTestCase {
         )
         let llm = ScriptedLLM(responses: [
             try response(
+                action: .inspectCandidate,
+                candidateID: candidate.id
+            ),
+            try response(
                 action: .finishCandidate,
                 candidateID: candidate.id,
                 finding: unsafeFinding
+            ),
+            try response(
+                action: .finishCandidate,
+                candidateID: candidate.id,
+                finding: finding(
+                    candidateID: candidate.id,
+                    summary: "Organize the unique document."
+                )
             )
         ])
 
-        do {
-            _ = try await OrderlyAgent(llm: llm).run(
-                analysis: fixture.analysis,
-                evidence: fixture.evidence
-            )
-            XCTFail("Expected invalidFinding")
-        } catch {
-            guard case AgentError.invalidFinding(let issues) = error else {
-                return XCTFail("Unexpected error: \(error)")
-            }
-            XCTAssertTrue(
-                issues.contains("trash is not allowed for F1.")
-            )
-        }
+        let state = try await OrderlyAgent(llm: llm).run(
+            analysis: fixture.analysis,
+            evidence: fixture.evidence
+        )
+
+        XCTAssertEqual(state.status, .completed)
+        XCTAssertEqual(state.findings.count, 1)
+        XCTAssertEqual(llm.prompts.count, 3)
+        XCTAssertTrue(llm.prompts[2].contains(
+            "Your proposed finding was rejected by validation."
+        ))
+        XCTAssertTrue(llm.prompts[2].contains(
+            "trash is not allowed for F1."
+        ))
+        XCTAssertEqual(
+            state.observations.filter { $0.type == .error }.count,
+            1
+        )
+        XCTAssertEqual(
+            state.findings.first?.evidence.first?.observationID,
+            state.observations.first { $0.type == .candidate }?.id
+        )
     }
 
     func testAgentInspectsAmbiguousPDFThenUsesContentToMove() async throws {

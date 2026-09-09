@@ -93,6 +93,7 @@ final class OrderlyAgent {
 
             print("Action:", decision.action.rawValue)
             print("Reason:", decision.reason)
+            print("File references:", decision.fileReferences)
 
             if decision.action == .finishCandidate {
                 guard let finding = decision.finding else {
@@ -116,12 +117,29 @@ final class OrderlyAgent {
                     evidence: evidence,
                     observations: state.observations
                 )
-                guard issues.isEmpty else {
+                if !issues.isEmpty {
                     print("======== AGENT FINDING REJECTED ========")
                     for issue in issues {
                         print("-", issue)
                     }
-                    throw AgentError.invalidFinding(issues)
+
+                    let feedback = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Your proposed finding was rejected by validation.
+
+                        Issues:
+                        \(issues.map { "- \($0)" }.joined(separator: "\n"))
+
+                        Revise the finding using factual tool observations. Error observations are feedback only and cannot be cited as evidence. Gather additional evidence if necessary.
+                        """
+                    )
+                    state.observations.append(feedback)
+
+                    print("======== VALIDATION FEEDBACK ========")
+                    print(feedback.content)
+                    continue
                 }
 
                 print("======== AGENT FINDING ========")
@@ -177,10 +195,35 @@ final class OrderlyAgent {
                 continue
             }
 
-            let observation = try toolRouter.execute(
-                decision: decision,
-                environment: environment
-            )
+            let observation: AgentObservation
+            do {
+                observation = try toolRouter.execute(
+                    decision: decision,
+                    environment: environment
+                )
+            } catch let error as AgentToolError {
+                // Argument mistakes are repairable model output, not a failed scan.
+                // Keep infrastructure errors fatal and retain the iteration limit.
+                switch error {
+                case .wrongFileCount, .invalidFileReference:
+                    let validReferences = environment.evidenceByCandidate[candidate.id]?
+                        .files.map(\.reference).joined(separator: ", ") ?? "none"
+                    observation = AgentObservation(
+                        type: .error,
+                        candidateID: candidate.id,
+                        content: """
+                        Tool request failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
+                        \(error.localizedDescription)
+                        Valid file references for this candidate: \(validReferences).
+                        compareFiles requires exactly two distinct references; inspectFile and inspectPDFContent require exactly one.
+                        Correct the arguments and retry. This failed request is not factual evidence.
+                        """
+                    )
+                    state.executedToolCalls.remove(signature)
+                default:
+                    throw error
+                }
+            }
             state.observations.append(observation)
 
             print("======== TOOL OBSERVATION ========")

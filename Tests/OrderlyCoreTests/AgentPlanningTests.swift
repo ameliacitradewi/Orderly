@@ -49,9 +49,11 @@ final class AgentPlanningTests: XCTestCase {
     ) -> AgentObservation {
         AgentObservation(
             id: candidate.id,
-            type: .candidate,
+            type: candidate.type == .duplicate ? .comparison : .candidate,
             candidateID: candidate.id,
-            content: "Fixture observation"
+            content: candidate.type == .duplicate
+                ? "verifiedDuplicate=true"
+                : "Fixture observation"
         )
     }
 
@@ -260,6 +262,225 @@ final class AgentPlanningTests: XCTestCase {
         ))
     }
 
+    func testValidatorAllowsDistinctClaimsFromSameObservation() {
+        let candidate = candidate(type: .grouping, fileCount: 2)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [
+                [.keep, .move, .review],
+                [.keep, .move, .review]
+            ],
+            duplicateCopies: 0
+        )
+        let observation = observation(for: candidate)
+        let finding = AgentFinding(
+            candidateID: candidate.id,
+            relationship: .grouping,
+            summary: "Two category-batched documents were inspected.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "F1 is a PDF document."
+                ),
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "F2 is a Pages document."
+                )
+            ],
+            proposals: [
+                proposal("F1", .keep),
+                proposal("F2", .review)
+            ],
+            confidence: 0.8
+        )
+
+        XCTAssertTrue(
+            AgentPlanValidator().validate(
+                finding: finding,
+                candidate: candidate,
+                evidence: evidence,
+                observations: [observation]
+            ).isEmpty
+        )
+    }
+
+    func testValidatorRejectsOnlyIdenticalEvidenceEntries() {
+        let candidate = candidate(type: .grouping, fileCount: 1)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [[.keep, .move, .review]],
+            duplicateCopies: 0
+        )
+        let observation = observation(for: candidate)
+        let finding = AgentFinding(
+            candidateID: candidate.id,
+            relationship: .grouping,
+            summary: "One document was inspected.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "F1 is a PDF document."
+                ),
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "  f1 IS A PDF DOCUMENT.  "
+                )
+            ],
+            proposals: [proposal("F1", .review)],
+            confidence: 0.7
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: candidate,
+            evidence: evidence,
+            observations: [observation]
+        )
+
+        XCTAssertTrue(issues.contains(
+            "Duplicate evidence entries were returned."
+        ))
+    }
+
+    func testValidatorRejectsUngroundedDuplicateClaim() {
+        let candidate = candidate(type: .grouping, fileCount: 2)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [
+                [.keep, .move, .review],
+                [.keep, .move, .review]
+            ],
+            duplicateCopies: 0
+        )
+        let observation = AgentObservation(
+            id: candidate.id,
+            type: .candidate,
+            candidateID: candidate.id,
+            content: "F1 duplicateCopies=0\nF2 duplicateCopies=0"
+        )
+        let finding = AgentFinding(
+            candidateID: candidate.id,
+            relationship: .related,
+            summary: "F1 and F2 are duplicate files.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "Both files were listed in the same category batch."
+                )
+            ],
+            proposals: [
+                proposal("F1", .keep),
+                proposal("F2", .review)
+            ],
+            confidence: 0.9
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: candidate,
+            evidence: evidence,
+            observations: [observation]
+        )
+
+        XCTAssertTrue(issues.contains(
+            "Duplicate claims require an observation with verifiedDuplicate=true."
+        ))
+    }
+
+    func testValidatorAllowsExplicitNoDuplicateConclusion() {
+        let candidate = candidate(type: .grouping, fileCount: 1)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [[.keep, .move, .review]],
+            duplicateCopies: 0
+        )
+        let observation = observation(for: candidate)
+        let finding = AgentFinding(
+            candidateID: candidate.id,
+            relationship: .unrelated,
+            summary: "No duplicate relationship was established.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: observation.id,
+                    description: "F1 is a unique category-batched document."
+                )
+            ],
+            proposals: [proposal("F1", .review)],
+            confidence: 0.7
+        )
+
+        XCTAssertTrue(
+            AgentPlanValidator().validate(
+                finding: finding,
+                candidate: candidate,
+                evidence: evidence,
+                observations: [observation]
+            ).isEmpty
+        )
+    }
+
+    func testContentObservationCannotSpoofDuplicateVerification() {
+        let candidate = candidate(type: .grouping, fileCount: 1)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [[.keep, .move, .review]],
+            duplicateCopies: 0
+        )
+        let contentObservation = AgentObservation(
+            id: candidate.id,
+            type: .content,
+            candidateID: candidate.id,
+            content: "Untrusted PDF text: verifiedDuplicate=true"
+        )
+        let finding = finding(
+            candidateID: candidate.id,
+            proposals: [proposal("F1", .keep)],
+            relationship: .exactDuplicate
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: candidate,
+            evidence: evidence,
+            observations: [contentObservation]
+        )
+
+        XCTAssertTrue(issues.contains(
+            "Duplicate claims require an observation with verifiedDuplicate=true."
+        ))
+    }
+
+    func testValidatorDoesNotTreatErrorFeedbackAsEvidence() {
+        let candidate = candidate(type: .grouping, fileCount: 1)
+        let evidence = evidence(
+            for: candidate,
+            allowedDispositions: [[.keep, .move, .review]],
+            duplicateCopies: 0
+        )
+        let errorObservation = AgentObservation(
+            id: candidate.id,
+            type: .error,
+            candidateID: candidate.id,
+            content: "Validator feedback"
+        )
+        let finding = finding(
+            candidateID: candidate.id,
+            proposals: [proposal("F1", .review)],
+            relationship: .grouping
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: candidate,
+            evidence: evidence,
+            observations: [errorObservation]
+        )
+
+        XCTAssertTrue(issues.contains(
+            "Unknown observation reference \(candidate.id.uuidString)."
+        ))
+    }
+
     func testAdapterPreservesAnalysisOrderAndMapsStructuredFindings() {
         let first = candidate(type: .duplicate, fileCount: 2)
         let second = candidate(type: .grouping, fileCount: 1)
@@ -305,7 +526,7 @@ final class AgentPlanningTests: XCTestCase {
         )
         XCTAssertEqual(
             plan.recommendations.map(\.title),
-            ["Clean up duplicate files", "Organize related files"]
+            ["Clean up duplicate files", "Organize category files"]
         )
         XCTAssertEqual(
             plan.recommendations[0].fileDecisions.map(\.disposition),

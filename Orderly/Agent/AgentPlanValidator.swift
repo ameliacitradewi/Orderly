@@ -59,20 +59,26 @@ struct AgentPlanValidator {
             )
         }
 
+        let candidateObservations = observations.filter {
+            $0.candidateID == candidate.id
+        }
         let availableObservationIDs = Set(
-            observations
-                .filter { $0.candidateID == candidate.id }
+            candidateObservations
+                .filter { $0.type != .error }
                 .map(\.id)
         )
-        let citedObservationIDs = Set(
-            finding.evidence.map(\.observationID)
-        )
+        let evidenceKeys = finding.evidence.map {
+            let description = $0.description
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return "\($0.observationID.uuidString)|\(description)"
+        }
 
         if finding.evidence.isEmpty {
             issues.append("Finding must cite at least one observation.")
         }
-        if finding.evidence.count != citedObservationIDs.count {
-            issues.append("Duplicate evidence references were returned.")
+        if evidenceKeys.count != Set(evidenceKeys).count {
+            issues.append("Duplicate evidence entries were returned.")
         }
 
         for reference in finding.evidence {
@@ -88,6 +94,43 @@ struct AgentPlanValidator {
             }
         }
 
+        let hasVerifiedDuplicateObservation = candidateObservations.contains {
+            $0.type == .comparison
+                && $0.content.lowercased().contains("verifiedduplicate=true")
+        }
+        if finding.assertsDuplicateRelationship,
+           !hasVerifiedDuplicateObservation {
+            issues.append(
+                "Duplicate claims require an observation with verifiedDuplicate=true."
+            )
+        }
+
         return issues
+    }
+}
+
+private extension AgentFinding {
+    var assertsDuplicateRelationship: Bool {
+        if relationship == .exactDuplicate {
+            return true
+        }
+
+        let negatedDuplicatePattern = #"\b(no|without)\s+(verified\s+|exact\s+)?duplicates?\b|\bnot\s+(an?\s+)?(verified\s+|exact\s+)?duplicates?\b|\bnot\s+verified\s+as\s+(an?\s+)?duplicates?\b"#
+        let duplicateWordPattern = #"\bduplicates?\b"#
+        let texts = [summary]
+            + evidence.map(\.description)
+            + proposals.map(\.reason)
+
+        return texts.contains {
+            let withoutNegations = $0.lowercased().replacingOccurrences(
+                of: negatedDuplicatePattern,
+                with: "",
+                options: .regularExpression
+            )
+            return withoutNegations.range(
+                of: duplicateWordPattern,
+                options: .regularExpression
+            ) != nil
+        }
     }
 }

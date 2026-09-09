@@ -50,7 +50,7 @@ struct AgentPlanAdapter {
         case .exactDuplicate:
             return "Clean up duplicate files"
         case .grouping:
-            return "Organize related files"
+            return "Organize category files"
         case .artifact:
             return "Clean up generated files"
         case .related:

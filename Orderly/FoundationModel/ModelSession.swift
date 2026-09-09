@@ -34,14 +34,25 @@ final class OrderlyModelSession {
         guard !analysis.files.isEmpty else {
             return ModelCleanupPlan(summary: "No files were found in this folder.", recommendations: [])
         }
-        try Self.validateModelAvailability()
+        let modelIsAvailable: Bool
+        do {
+            try Self.validateModelAvailability()
+            modelIsAvailable = true
+        } catch {
+            // A cleanup plan can still be built safely from the rules calculated during
+            // analysis. In particular, a model that is downloading or temporarily fails
+            // to start must not strand the UI on its error screen.
+            modelIsAvailable = false
+        }
         let evidenceByID = Dictionary(uniqueKeysWithValues: evidence.map { ($0.candidateID, $0) })
         var recommendations: [CleanupRecommendation] = []
         var fallbackCount = 0
         for candidate in analysis.candidates {
             try Task.checkCancellation()
             guard let supplied = evidenceByID[candidate.id] else { continue }
-            let result = try await decide(supplied.files)
+            let result = modelIsAvailable
+                ? try await decide(supplied.files)
+                : ruleBasedDecisions(for: supplied.files)
             fallbackCount += result.fallbackCount
             recommendations.append(CleanupRecommendation(
                 candidateID: candidate.id.uuidString,
@@ -62,6 +73,20 @@ final class OrderlyModelSession {
             summary += " \(analysis.unreadableHashCount) files could not be verified for duplicates; no duplicate deletion was recommended for them."
         }
         return ModelCleanupPlan(summary: summary, recommendations: recommendations)
+    }
+
+    func ruleBasedDecisions(for files: [CandidateFileEvidence])
+        -> (decisions: [ModelFileDecision], fallbackCount: Int) {
+        let decisions = files.map { file in
+            let disposition: FileDisposition = file.allowedDispositions.contains(.review)
+                ? .review : .keep
+            return ModelFileDecision(
+                fileReference: file.reference,
+                disposition: disposition,
+                reason: "Kept the file or requested review because the model was unavailable."
+            )
+        }
+        return (decisions, decisions.count)
     }
 
     private func decide(_ files: [CandidateFileEvidence]) async throws
@@ -85,15 +110,7 @@ final class OrderlyModelSession {
                 let right = try await decide(Array(files[middle...]))
                 return (left.decisions + right.decisions, left.fallbackCount + right.fallbackCount)
             }
-            let file = files[0]
-            let fallbackDisposition = file.allowedDispositions.contains(.review)
-                ? FileDisposition.review
-                : file.allowedDispositions.first ?? .keep
-            return ([ModelFileDecision(
-                fileReference: file.reference,
-                disposition: fallbackDisposition,
-                reason: "Used the safest available fallback from the policy allowlist."
-            )], 1)
+            return ruleBasedDecisions(for: files)
         }
     }
 
