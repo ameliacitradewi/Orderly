@@ -1,7 +1,9 @@
 import Foundation
 
 struct ContentObservation: Codable, Sendable, Equatable {
-    let fileReference: String
+    let fileID: UUID
+    let localReference: String?
+    let globalReference: String
     let contentType: String
     let pageCount: Int?
     let extractedCharacterCount: Int
@@ -12,7 +14,9 @@ struct ContentObservation: Codable, Sendable, Equatable {
 protocol ContentInspectionService: Sendable {
     func inspectPDF(
         at url: URL,
-        fileReference: String,
+        fileID: UUID,
+        localReference: String?,
+        globalReference: String,
         maxExcerptCharacters: Int
     ) throws -> ContentObservation
 }
