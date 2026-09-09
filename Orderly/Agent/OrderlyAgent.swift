@@ -217,7 +217,7 @@ final class OrderlyAgent {
                         content: """
                         Tool request failed: \(decision.action.rawValue), fileReferences=\(decision.fileReferences).
                         \(error.localizedDescription)
-                        Valid local file references for this candidate: \(validReferences).
+                        Valid file references for this candidate: \(validReferences).
                         compareFiles requires two distinct F references; compareGlobalFiles and compareDocumentContent require two distinct observed G references including a current candidate file.
                         inspectFile, inspectPDFContent, and findRelatedFiles require one F reference. inspectGlobalFile and inspectGlobalPDFContent require one observed G reference. Use G references from this candidate's observations, never paths or guessed IDs.
                         Correct the arguments and retry. This failed request is not factual evidence.
