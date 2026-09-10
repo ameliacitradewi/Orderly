@@ -106,7 +106,7 @@ final class AgentEvaluationTests: XCTestCase {
         XCTAssertEqual(report.findingCount, 1)
         XCTAssertEqual(report.completionRate, 0.5, accuracy: 0.0001)
         XCTAssertEqual(report.candidateFailureCount, 0)
-        XCTAssertEqual(report.agentSuccessRate, 1, accuracy: 0.0001)
+        XCTAssertEqual(report.agentSuccessRate, 0.5, accuracy: 0.0001)
         XCTAssertEqual(report.fallbackRate, 0, accuracy: 0.0001)
         XCTAssertEqual(report.totalAgentSteps, 5)
         XCTAssertEqual(report.maxStepsPerCandidate, 4)
@@ -122,7 +122,7 @@ final class AgentEvaluationTests: XCTestCase {
         XCTAssertEqual(report.reviewProposalCount, 1)
         XCTAssertEqual(report.trashProposalCount, 0)
         XCTAssertTrue(report.debugSummary().contains("completionRate=0.500"))
-        XCTAssertTrue(report.debugSummary().contains("agentSuccessRate=1.000"))
+        XCTAssertTrue(report.debugSummary().contains("agentSuccessRate=0.500"))
     }
 
     func testEvaluatorSeparatesCompletedFallbackFromAgentSuccess() {
