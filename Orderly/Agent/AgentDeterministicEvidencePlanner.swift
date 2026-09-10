@@ -1,12 +1,11 @@
 import Foundation
 
-/// Supplies only evidence-gathering actions that are already mandatory from trusted
-/// workflow state or validator feedback. These steps do not require model judgment,
-/// so executing them directly avoids paying for an LLM turn whose result would be
-/// deterministically redirected anyway.
+/// Supplies evidence-gathering actions that are fully determined by trusted workflow
+/// state. These steps do not require model judgment, so executing them directly avoids
+/// paying for an LLM turn whose result would be deterministically redirected anyway.
 ///
 /// This planner never creates cleanup proposals, never chooses arbitrary paths, and
-/// only uses F/G references that were derived from the current candidate/environment.
+/// only uses F/G references derived from the current candidate/environment.
 struct AgentDeterministicEvidencePlanner {
     func nextDecision(
         candidate: AnalysisCandidate,
@@ -17,14 +16,47 @@ struct AgentDeterministicEvidencePlanner {
             $0.candidateID == candidate.id
         }
 
-        // inspectCandidate remains model-visible for normal agent-loop compatibility.
-        // Mandatory semantic steps only become eligible after trusted candidate
-        // references and typed capabilities have been exposed by that observation.
+        // Candidate inspection is a bounded read-only observation with no open-ended
+        // judgment. When fast paths are enabled, expose trusted F/G references before
+        // asking the model to reason about the candidate.
         guard candidateObservations.contains(where: { $0.type == .candidate }) else {
+            return AgentDecision(
+                action: .inspectCandidate,
+                candidateID: candidate.id,
+                fileReferences: [],
+                reason: "Expose trusted candidate metadata before model reasoning."
+            )
+        }
+
+        guard let evidence = environment.evidenceByCandidate[candidate.id] else {
             return nil
         }
 
-        let localFiles = environment.evidenceByCandidate[candidate.id]?.files ?? []
+        // Exact-duplicate candidates already come from deterministic SHA grouping, but
+        // the safety invariant still requires an explicit verifiedDuplicate comparison
+        // observation. Compare the designated keeper against each remaining copy. This
+        // is read-only and deterministic; the finding is built separately only after
+        // every required comparison verifies the SHA relationship.
+        if candidate.type == .duplicate,
+           let keeper = Self.duplicateKeeper(in: evidence) {
+            let completedPairs = Self.comparedDuplicatePairKeys(
+                candidateObservations,
+                evidence: evidence
+            )
+            for file in evidence.files where file.fileID != keeper.fileID {
+                let pairKey = Self.fileIDPairKey(keeper.fileID, file.fileID)
+                if !completedPairs.contains(pairKey) {
+                    return AgentDecision(
+                        action: .compareFiles,
+                        candidateID: candidate.id,
+                        fileReferences: [keeper.reference, file.reference],
+                        reason: "Verify the deterministic SHA duplicate relationship against the designated keeper."
+                    )
+                }
+            }
+        }
+
+        let localFiles = evidence.files
         let localGlobalReferences = Set(localFiles.compactMap {
             environment.globalReferenceByFileID[$0.fileID]
         })
@@ -223,6 +255,44 @@ struct AgentDeterministicEvidencePlanner {
             fileReferences: pair,
             reason: "\(reasonPrefix) requires semantic image comparison before another planning decision."
         )
+    }
+
+    private static func duplicateKeeper(
+        in evidence: CandidateEvidence
+    ) -> CandidateFileEvidence? {
+        let keeperNames = Set(evidence.files.compactMap(\.duplicateKeeperName))
+        if keeperNames.count == 1,
+           let name = keeperNames.first {
+            let matches = evidence.files.filter { $0.name == name }
+            if matches.count == 1 {
+                return matches[0]
+            }
+        }
+
+        let protected = evidence.files.filter {
+            !$0.allowedDispositions.contains(.trash)
+        }
+        return protected.count == 1 ? protected[0] : nil
+    }
+
+    private static func comparedDuplicatePairKeys(
+        _ observations: [AgentObservation],
+        evidence: CandidateEvidence
+    ) -> Set<String> {
+        let candidateIDs = Set(evidence.files.map(\.fileID))
+        return Set(observations.compactMap { observation -> String? in
+            guard observation.type == .comparison,
+                  let ids = observation.comparison?.fileIDs,
+                  ids.count == 2,
+                  Set(ids).isSubset(of: candidateIDs) else {
+                return nil
+            }
+            return fileIDPairKey(ids[0], ids[1])
+        })
+    }
+
+    private static func fileIDPairKey(_ first: UUID, _ second: UUID) -> String {
+        [first.uuidString, second.uuidString].sorted().joined(separator: "|")
     }
 
     private static func requiresSemanticRecovery(_ content: String) -> Bool {
