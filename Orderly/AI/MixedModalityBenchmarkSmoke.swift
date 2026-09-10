@@ -10,6 +10,9 @@ enum MixedModalityBenchmarkSmoke {
         case missingFixtureFile(String)
         case missingDuplicateCandidate
         case incompleteRun(Int, Int)
+        case unexpectedCandidateFailures(Int)
+        case incompleteAgentSuccess(Double)
+        case unexpectedFallback(Double)
         case missingVerifiedDuplicateComparison
         case missingDocumentComparison
         case missingImageComparison
@@ -25,6 +28,12 @@ enum MixedModalityBenchmarkSmoke {
                 return "Deterministic analysis did not produce the expected duplicate candidate."
             case .incompleteRun(let findings, let candidates):
                 return "The benchmark completed only \(findings) of \(candidates) candidates."
+            case .unexpectedCandidateFailures(let count):
+                return "The production coordinator isolated \(count) candidate failure(s); the baseline benchmark requires zero fallbacks."
+            case .incompleteAgentSuccess(let rate):
+                return "The baseline benchmark requires agentSuccessRate=1.0, but observed \(Self.number(rate))."
+            case .unexpectedFallback(let rate):
+                return "The baseline benchmark requires fallbackRate=0.0, but observed \(Self.number(rate))."
             case .missingVerifiedDuplicateComparison:
                 return "The benchmark did not exercise verified SHA duplicate comparison."
             case .missingDocumentComparison:
@@ -40,6 +49,7 @@ enum MixedModalityBenchmarkSmoke {
     @MainActor
     static func run() async throws {
         print("======== MIXED MODALITY BENCHMARK START ========")
+        print("orchestration=ResilientAgentCoordinator")
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("Orderly-Mixed-Benchmark-\(UUID().uuidString)")
@@ -193,13 +203,17 @@ enum MixedModalityBenchmarkSmoke {
             return peak
         }
 
+        let productionCoordinator = ResilientAgentCoordinator(
+            agent: OrderlyAgent(
+                llm: QwenMLXService(),
+                visionLanguageService: FastVLMVisionService()
+            )
+        )
+
         let planningStartedAt = Date()
         let state: AgentState
         do {
-            state = try await OrderlyAgent(
-                llm: QwenMLXService(),
-                visionLanguageService: FastVLMVisionService()
-            ).run(
+            state = try await productionCoordinator.run(
                 analysis: analysis,
                 evidence: evidence
             )
@@ -218,10 +232,28 @@ enum MixedModalityBenchmarkSmoke {
             analysis: analysis
         )
 
+        // A production fallback is good runtime behavior, but it is not accepted as a
+        // clean benchmark success. The baseline must prove that all three intelligence
+        // paths complete through the model-driven agent without coordinator recovery.
         guard state.findings.count == benchmarkCandidates.count else {
             throw BenchmarkError.incompleteRun(
                 state.findings.count,
                 benchmarkCandidates.count
+            )
+        }
+        guard state.candidateFailures.isEmpty else {
+            throw BenchmarkError.unexpectedCandidateFailures(
+                state.candidateFailures.count
+            )
+        }
+        guard evaluation.agentSuccessRate >= 0.999_999 else {
+            throw BenchmarkError.incompleteAgentSuccess(
+                evaluation.agentSuccessRate
+            )
+        }
+        guard evaluation.fallbackRate <= 0.000_001 else {
+            throw BenchmarkError.unexpectedFallback(
+                evaluation.fallbackRate
             )
         }
         guard state.observations.contains(where: {
@@ -279,6 +311,7 @@ enum MixedModalityBenchmarkSmoke {
         }
 
         print("======== MIXED MODALITY BENCHMARK PASS ========")
+        print("productionCoordinatorFallbacks=0")
         print("No cleanup action was executed.")
     }
 
