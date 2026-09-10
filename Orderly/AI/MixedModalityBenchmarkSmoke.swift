@@ -31,9 +31,19 @@ enum MixedModalityBenchmarkSmoke {
             case .unexpectedCandidateFailures(let count):
                 return "The production coordinator isolated \(count) candidate failure(s); the baseline benchmark requires zero fallbacks."
             case .incompleteAgentSuccess(let rate):
-                return "The baseline benchmark requires agentSuccessRate=1.0, but observed \(Self.number(rate))."
+                let formatted = String(
+                    format: "%.3f",
+                    locale: Locale(identifier: "en_US_POSIX"),
+                    rate
+                )
+                return "The baseline benchmark requires agentSuccessRate=1.0, but observed \(formatted)."
             case .unexpectedFallback(let rate):
-                return "The baseline benchmark requires fallbackRate=0.0, but observed \(Self.number(rate))."
+                let formatted = String(
+                    format: "%.3f",
+                    locale: Locale(identifier: "en_US_POSIX"),
+                    rate
+                )
+                return "The baseline benchmark requires fallbackRate=0.0, but observed \(formatted)."
             case .missingVerifiedDuplicateComparison:
                 return "The benchmark did not exercise verified SHA duplicate comparison."
             case .missingDocumentComparison:
