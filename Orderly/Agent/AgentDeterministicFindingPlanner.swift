@@ -9,6 +9,8 @@ import Foundation
 /// into deletion authority, and every returned finding is still validated by
 /// `AgentPlanValidator` before it can leave the agent loop.
 struct AgentDeterministicFindingPlanner {
+    private static let minimumSemanticConfidence = 0.65
+
     func finding(
         candidate: AnalysisCandidate,
         evidence: CandidateEvidence,
@@ -130,7 +132,12 @@ struct AgentDeterministicFindingPlanner {
         }
 
         let candidateIDs = Set(candidate.fileIDs)
-        guard candidateIDs == Set(evidence.files.map(\.fileID)) else {
+        guard candidateIDs == Set(evidence.files.map(\.fileID)),
+              !Self.hasConflictingLocalSemanticObservation(
+                  candidateID: candidate.id,
+                  candidateIDs: candidateIDs,
+                  observations: observations
+              ) else {
             return nil
         }
 
@@ -140,7 +147,7 @@ struct AgentDeterministicFindingPlanner {
             if observation.type == .documentComparison,
                let comparison = observation.documentComparison,
                comparison.semantic.confidence.isFinite,
-               (0...1).contains(comparison.semantic.confidence),
+               (Self.minimumSemanticConfidence...1).contains(comparison.semantic.confidence),
                Self.isEntirelyLocal(comparison.fileIDs, candidateIDs: candidateIDs) {
                 let description: String
                 switch comparison.semantic.relationship {
@@ -163,7 +170,7 @@ struct AgentDeterministicFindingPlanner {
             if observation.type == .imageSemanticComparison,
                let comparison = observation.imageSemanticComparison,
                comparison.semantic.confidence.isFinite,
-               (0...1).contains(comparison.semantic.confidence),
+               (Self.minimumSemanticConfidence...1).contains(comparison.semantic.confidence),
                Self.isEntirelyLocal(comparison.fileIDs, candidateIDs: candidateIDs) {
                 let description: String
                 switch comparison.semantic.relationship {
@@ -251,6 +258,37 @@ struct AgentDeterministicFindingPlanner {
         let description: String
         let confidence: Double
         let modality: Modality
+    }
+
+    private static func hasConflictingLocalSemanticObservation(
+        candidateID: UUID,
+        candidateIDs: Set<UUID>,
+        observations: [AgentObservation]
+    ) -> Bool {
+        for observation in observations where observation.candidateID == candidateID {
+            if observation.type == .documentComparison,
+               let comparison = observation.documentComparison,
+               isEntirelyLocal(comparison.fileIDs, candidateIDs: candidateIDs) {
+                switch comparison.semantic.relationship {
+                case .unrelated, .uncertain:
+                    return true
+                case .sameDocumentRevision, .sameTopic:
+                    break
+                }
+            }
+
+            if observation.type == .imageSemanticComparison,
+               let comparison = observation.imageSemanticComparison,
+               isEntirelyLocal(comparison.fileIDs, candidateIDs: candidateIDs) {
+                switch comparison.semantic.relationship {
+                case .unrelated, .uncertain:
+                    return true
+                case .sameImageVariant, .sameScene, .sameSubject:
+                    break
+                }
+            }
+        }
+        return false
     }
 
     private static func isEntirelyLocal(
