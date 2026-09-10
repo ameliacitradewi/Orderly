@@ -115,7 +115,7 @@ final class OrderlyAgent {
                 )
                 if issues.isEmpty {
                     print("======== AGENT DETERMINISTIC FINDING FAST PATH ========")
-                    print("Bypassed Qwen because SHA verification, keeper metadata, and the allowlist fully determine this exact-duplicate finding.")
+                    print("Bypassed Qwen because trusted typed evidence and the cleanup allowlist fully determine this bounded finding.")
                     Self.printFinding(deterministicFinding)
                     return deterministicFinding
                 }
