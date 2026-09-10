@@ -7,11 +7,23 @@ struct LocalModelRuntimeStat: Sendable, Equatable {
     let totalLoadSeconds: Double
     let inferenceCount: Int
     let totalInferenceSeconds: Double
+    let totalPromptCharacters: Int
+    let totalOutputCharacters: Int
     let residentBytesAfterLoad: UInt64?
 
     var averageInferenceSeconds: Double {
         guard inferenceCount > 0 else { return 0 }
         return totalInferenceSeconds / Double(inferenceCount)
+    }
+
+    var averagePromptCharacters: Double {
+        guard inferenceCount > 0 else { return 0 }
+        return Double(totalPromptCharacters) / Double(inferenceCount)
+    }
+
+    var averageOutputCharacters: Double {
+        guard inferenceCount > 0 else { return 0 }
+        return Double(totalOutputCharacters) / Double(inferenceCount)
     }
 }
 
@@ -27,6 +39,10 @@ struct LocalModelRuntimeSnapshot: Sendable, Equatable {
         Qwen inferences=\(qwen.inferenceCount)
         Qwen totalInferenceSeconds=\(Self.number(qwen.totalInferenceSeconds))
         Qwen averageInferenceSeconds=\(Self.number(qwen.averageInferenceSeconds))
+        Qwen totalPromptCharacters=\(qwen.totalPromptCharacters)
+        Qwen averagePromptCharacters=\(Self.number(qwen.averagePromptCharacters))
+        Qwen totalOutputCharacters=\(qwen.totalOutputCharacters)
+        Qwen averageOutputCharacters=\(Self.number(qwen.averageOutputCharacters))
         Qwen residentBytesAfterLoad=\(Self.bytes(qwen.residentBytesAfterLoad))
         FastVLM model=\(fastVLM.modelName)
         FastVLM loads=\(fastVLM.loadCount)
@@ -34,6 +50,10 @@ struct LocalModelRuntimeSnapshot: Sendable, Equatable {
         FastVLM inferences=\(fastVLM.inferenceCount)
         FastVLM totalInferenceSeconds=\(Self.number(fastVLM.totalInferenceSeconds))
         FastVLM averageInferenceSeconds=\(Self.number(fastVLM.averageInferenceSeconds))
+        FastVLM totalPromptCharacters=\(fastVLM.totalPromptCharacters)
+        FastVLM averagePromptCharacters=\(Self.number(fastVLM.averagePromptCharacters))
+        FastVLM totalOutputCharacters=\(fastVLM.totalOutputCharacters)
+        FastVLM averageOutputCharacters=\(Self.number(fastVLM.averageOutputCharacters))
         FastVLM residentBytesAfterLoad=\(Self.bytes(fastVLM.residentBytesAfterLoad))
         """
     }
@@ -57,6 +77,8 @@ actor LocalModelRuntimeMetrics {
         var totalLoadSeconds = 0.0
         var inferenceCount = 0
         var totalInferenceSeconds = 0.0
+        var totalPromptCharacters = 0
+        var totalOutputCharacters = 0
         var residentBytesAfterLoad: UInt64?
     }
 
@@ -80,14 +102,26 @@ actor LocalModelRuntimeMetrics {
         fastVLM.residentBytesAfterLoad = residentBytes
     }
 
-    func recordQwenInference(seconds: Double) {
+    func recordQwenInference(
+        seconds: Double,
+        promptCharacters: Int = 0,
+        outputCharacters: Int = 0
+    ) {
         qwen.inferenceCount += 1
         qwen.totalInferenceSeconds += max(0, seconds)
+        qwen.totalPromptCharacters += max(0, promptCharacters)
+        qwen.totalOutputCharacters += max(0, outputCharacters)
     }
 
-    func recordFastVLMInference(seconds: Double) {
+    func recordFastVLMInference(
+        seconds: Double,
+        promptCharacters: Int = 0,
+        outputCharacters: Int = 0
+    ) {
         fastVLM.inferenceCount += 1
         fastVLM.totalInferenceSeconds += max(0, seconds)
+        fastVLM.totalPromptCharacters += max(0, promptCharacters)
+        fastVLM.totalOutputCharacters += max(0, outputCharacters)
     }
 
     func snapshot() -> LocalModelRuntimeSnapshot {
@@ -104,6 +138,8 @@ actor LocalModelRuntimeMetrics {
             totalLoadSeconds: stat.totalLoadSeconds,
             inferenceCount: stat.inferenceCount,
             totalInferenceSeconds: stat.totalInferenceSeconds,
+            totalPromptCharacters: stat.totalPromptCharacters,
+            totalOutputCharacters: stat.totalOutputCharacters,
             residentBytesAfterLoad: stat.residentBytesAfterLoad
         )
     }
