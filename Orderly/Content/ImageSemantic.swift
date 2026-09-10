@@ -84,7 +84,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
 
         Classify contentKind as exactly one of: photo, screenshot, scannedDocument, graphic, uncertain.
         Use uncertain when visual evidence is conflicting or insufficient.
-        summary must be one concise factual sentence, at most 45 words.
+        The summary value must be one concise factual paragraph on a single line, at most 45 words.
         confidence must be a decimal number from 0 to 1.
 
         Return exactly these three lines and no other text:
