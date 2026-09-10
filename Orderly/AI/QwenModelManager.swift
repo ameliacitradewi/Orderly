@@ -61,11 +61,11 @@ actor QwenModelManager {
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    // Four-file finishCandidate responses can legitimately contain
-                    // one proposal per file plus grounded evidence. 650 tokens was
-                    // observed truncating otherwise-valid JSON mid-object. Keep a
-                    // bounded but larger ceiling; generation still stops at EOS.
-                    maxTokens: 1_200,
+                    // Agent finish responses can legitimately contain several file
+                    // proposals, so keep the larger ceiling there. Internal semantic
+                    // classifiers have tiny fixed schemas and use a smaller bound to
+                    // prevent accidental long generations.
+                    maxTokens: Self.maxTokens(for: prompt),
                     temperature: 0
                 ),
                 additionalContext: ["enable_thinking": false]
@@ -74,7 +74,9 @@ actor QwenModelManager {
             let firstStartedAt = Date()
             var response = try await session.respond(to: prompt)
             await LocalModelRuntimeMetrics.shared.recordQwenInference(
-                seconds: Date().timeIntervalSince(firstStartedAt)
+                seconds: Date().timeIntervalSince(firstStartedAt),
+                promptCharacters: prompt.count,
+                outputCharacters: response.count
             )
 
             // Structured agent/tool prompts are allowed one bounded regeneration when
@@ -87,17 +89,18 @@ actor QwenModelManager {
                 print("======== QWEN STRUCTURED RESPONSE RETRY ========")
                 print("Previous JSON response was incomplete or malformed; regenerating once.")
 
+                let retryPrompt = """
+                Your previous response was incomplete or invalid JSON.
+                Regenerate the complete JSON object requested by the previous instruction.
+                Preserve the same intended action and evidence, but keep summary, evidence descriptions, and proposal reasons concise.
+                Output one complete JSON object only, with no markdown or commentary.
+                """
                 let retryStartedAt = Date()
-                response = try await session.respond(
-                    to: """
-                    Your previous response was incomplete or invalid JSON.
-                    Regenerate the complete JSON object requested by the previous instruction.
-                    Preserve the same intended action and evidence, but keep summary, evidence descriptions, and proposal reasons concise.
-                    Output one complete JSON object only, with no markdown or commentary.
-                    """
-                )
+                response = try await session.respond(to: retryPrompt)
                 await LocalModelRuntimeMetrics.shared.recordQwenInference(
-                    seconds: Date().timeIntervalSince(retryStartedAt)
+                    seconds: Date().timeIntervalSince(retryStartedAt),
+                    promptCharacters: retryPrompt.count,
+                    outputCharacters: response.count
                 )
             }
 
@@ -109,6 +112,21 @@ actor QwenModelManager {
         }
 
         return try await generation.value
+    }
+
+    private static func maxTokens(for prompt: String) -> Int {
+        let compactSemanticMarkers = [
+            "You are a semantic document comparison component inside Orderly.",
+            "You convert visual observations into typed metadata for Orderly.",
+            "You classify the relationship between two images for Orderly."
+        ]
+        if compactSemanticMarkers.contains(where: { prompt.contains($0) }) {
+            return 320
+        }
+
+        // Four-file finishCandidate responses were previously observed truncating at
+        // 650 tokens. Preserve the safe larger ceiling for the general agent loop.
+        return 1_200
     }
 
     private static func expectsJSONObject(_ prompt: String) -> Bool {
