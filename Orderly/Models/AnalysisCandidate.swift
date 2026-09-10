@@ -42,28 +42,26 @@ struct AnalysisCandidate: Identifiable, Codable, Hashable, Sendable {
         self.fileIDs = fileIDs
         self.confidence = confidence
         self.reason = reason
-        self.investigationRequirement = investigationRequirement
-    }
 
-    /// Older benchmark/smoke fixtures encoded the required semantic path only in
-    /// their trusted internal reason string. Keep those fixtures compatible while
-    /// new callers migrate to the typed requirement. This inference can only trigger
-    /// additional read-only inspection of files already inside the candidate.
-    var resolvedInvestigationRequirement: CandidateInvestigationRequirement {
-        guard investigationRequirement == .automatic else {
-            return investigationRequirement
+        // Older benchmark/smoke fixtures encoded a mandatory semantic path only in
+        // their trusted internal reason string. Preserve that behavior while callers
+        // migrate to the typed field. Inference can only require extra read-only
+        // inspection of files already inside this candidate; it never grants cleanup
+        // authority or exposes a new filesystem path.
+        if investigationRequirement == .automatic {
+            let lowercasedReason = reason.lowercased()
+            if lowercasedReason.contains("inspectpdfcontent")
+                && lowercasedReason.contains("comparedocumentcontent") {
+                self.investigationRequirement = .documentSemantic
+            } else if lowercasedReason.contains("inspectimagecontent")
+                && lowercasedReason.contains("compareimagecontent") {
+                self.investigationRequirement = .imageSemantic
+            } else {
+                self.investigationRequirement = .automatic
+            }
+        } else {
+            self.investigationRequirement = investigationRequirement
         }
-
-        let lowercasedReason = reason.lowercased()
-        if lowercasedReason.contains("inspectpdfcontent")
-            && lowercasedReason.contains("comparedocumentcontent") {
-            return .documentSemantic
-        }
-        if lowercasedReason.contains("inspectimagecontent")
-            && lowercasedReason.contains("compareimagecontent") {
-            return .imageSemantic
-        }
-        return .automatic
     }
 }
 
