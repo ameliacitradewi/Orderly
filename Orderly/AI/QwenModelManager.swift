@@ -12,8 +12,6 @@ actor QwenModelManager {
     private var loadingTask: Task<ModelContainer, Error>?
     private var inferenceTail: Task<Void, Never>?
 
-    /// Keeps the successfully loaded container alive and shares the same in-flight
-    /// task when more than one request arrives during the initial model load.
     func modelContainer() async throws -> ModelContainer {
         if let loadingTask {
             return try await loadingTask.value
@@ -45,9 +43,6 @@ actor QwenModelManager {
         }
     }
 
-    /// MLX model weights are shared, but inference requests are intentionally
-    /// serialized. Independent ChatSession instances still get clean transcripts,
-    /// while two app tasks cannot drive the same ModelContainer concurrently.
     func generate(prompt: String) async throws -> String {
         let predecessor = inferenceTail
 
@@ -58,14 +53,11 @@ actor QwenModelManager {
 
             try Task.checkCancellation()
             let model = try await self.modelContainer()
+            let purpose = Self.inferencePurpose(for: prompt)
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    // Agent finish responses can legitimately contain several file
-                    // proposals, so keep the larger ceiling there. Internal semantic
-                    // classifiers have tiny fixed schemas and use a smaller bound to
-                    // prevent accidental long generations.
-                    maxTokens: Self.maxTokens(for: prompt),
+                    maxTokens: Self.maxTokens(for: purpose),
                     temperature: 0
                 ),
                 additionalContext: ["enable_thinking": false]
@@ -75,15 +67,11 @@ actor QwenModelManager {
             var response = try await session.respond(to: prompt)
             await LocalModelRuntimeMetrics.shared.recordQwenInference(
                 seconds: Date().timeIntervalSince(firstStartedAt),
+                purpose: purpose,
                 promptCharacters: prompt.count,
                 outputCharacters: response.count
             )
 
-            // Structured agent/tool prompts are allowed one bounded regeneration when
-            // the model returns malformed or truncated JSON. The same ChatSession keeps
-            // the original instruction and prior response in context, so the retry does
-            // not need to copy untrusted observations into a new prompt. If the second
-            // response is still invalid, downstream typed decoders reject it normally.
             if Self.expectsJSONObject(prompt),
                !Self.containsValidJSONObject(response) {
                 print("======== QWEN STRUCTURED RESPONSE RETRY ========")
@@ -99,6 +87,7 @@ actor QwenModelManager {
                 response = try await session.respond(to: retryPrompt)
                 await LocalModelRuntimeMetrics.shared.recordQwenInference(
                     seconds: Date().timeIntervalSince(retryStartedAt),
+                    purpose: purpose,
                     promptCharacters: retryPrompt.count,
                     outputCharacters: response.count
                 )
@@ -114,19 +103,26 @@ actor QwenModelManager {
         return try await generation.value
     }
 
-    private static func maxTokens(for prompt: String) -> Int {
-        let compactSemanticMarkers = [
-            "You are a semantic document comparison component inside Orderly.",
-            "You convert visual observations into typed metadata for Orderly.",
-            "You classify the relationship between two images for Orderly."
-        ]
-        if compactSemanticMarkers.contains(where: { prompt.contains($0) }) {
-            return 320
+    private static func inferencePurpose(for prompt: String) -> QwenInferencePurpose {
+        if prompt.contains("You are a semantic document comparison component inside Orderly.") {
+            return .documentSemantic
         }
+        if prompt.contains("You convert visual observations into typed metadata for Orderly.") {
+            return .imageStructuring
+        }
+        if prompt.contains("You classify the relationship between two images for Orderly.") {
+            return .imageRelationship
+        }
+        return .agentDecision
+    }
 
-        // Four-file finishCandidate responses were previously observed truncating at
-        // 650 tokens. Preserve the safe larger ceiling for the general agent loop.
-        return 1_200
+    private static func maxTokens(for purpose: QwenInferencePurpose) -> Int {
+        switch purpose {
+        case .documentSemantic, .imageStructuring, .imageRelationship:
+            return 320
+        case .agentDecision:
+            return 1_200
+        }
     }
 
     private static func expectsJSONObject(_ prompt: String) -> Bool {

@@ -26,7 +26,8 @@ final class OrderlyAgent {
             let imageSemanticAnalyzer = visionLanguageService.map {
                 StructuredImageSemanticAnalyzer(
                     visionModel: $0,
-                    textModel: llm
+                    textModel: llm,
+                    preferVisionOnly: deterministicFastPaths
                 )
             }
             self.toolRouter = ToolRouter(

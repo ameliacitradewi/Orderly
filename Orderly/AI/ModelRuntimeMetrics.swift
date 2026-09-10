@@ -179,7 +179,7 @@ actor LocalModelRuntimeMetrics {
     func snapshot() -> LocalModelRuntimeSnapshot {
         LocalModelRuntimeSnapshot(
             qwen: Self.snapshot(qwen),
-            qwenByPurpose: qwenByPurpose.mapValues(Self.snapshot),
+            qwenByPurpose: qwenByPurpose.mapValues { Self.snapshot($0) },
             fastVLM: Self.snapshot(fastVLM)
         )
     }
