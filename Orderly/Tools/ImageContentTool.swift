@@ -47,7 +47,7 @@ struct InspectImageContentTool {
         contentKind=\(semantic.contentKind.rawValue)
         semanticConfidence=\(Self.number(semantic.confidence))
         semanticSummary=\(PromptText.quoted(semantic.summary, bytes: 640))
-        Visual semantics come from bounded FastVLM perception structured by the text model. They do not prove exact duplication and never authorize deletion.
+        Visual semantics come from bounded on-device visual perception. They do not prove exact duplication and never authorize deletion.
         """
 
         return AgentObservation(
