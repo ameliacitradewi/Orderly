@@ -9,26 +9,10 @@ final class AgentDeterministicSemanticFindingTests: XCTestCase {
             fileCount: 2,
             allowedDispositions: [.keep, .move, .review]
         )
-        let observation = AgentObservation(
-            type: .documentComparison,
-            candidateID: fixture.candidate.id,
-            content: "semanticRelationship=sameDocumentRevision",
-            globalReferences: ["G1", "G2"],
-            documentComparison: DocumentComparisonObservation(
-                fileIDs: fixture.candidate.fileIDs,
-                globalReferences: ["G1", "G2"],
-                deterministic: DeterministicDocumentComparison(
-                    tokenOverlap: 0.86,
-                    shingleSimilarity: 0.44,
-                    lengthDifference: 0.06,
-                    comparedCharacterCount: 680
-                ),
-                semantic: DocumentSemanticAssessment(
-                    relationship: .sameDocumentRevision,
-                    summary: "The documents are revisions of the same underlying document.",
-                    confidence: 0.9
-                )
-            )
+        let observation = documentObservation(
+            candidate: fixture.candidate,
+            relationship: .sameDocumentRevision,
+            confidence: 0.9
         )
 
         let finding = try XCTUnwrap(
@@ -113,25 +97,10 @@ final class AgentDeterministicSemanticFindingTests: XCTestCase {
             fileCount: 2,
             allowedDispositions: [.keep, .review, .trash]
         )
-        let observation = AgentObservation(
-            type: .documentComparison,
-            candidateID: fixture.candidate.id,
-            content: "semanticRelationship=sameTopic",
-            documentComparison: DocumentComparisonObservation(
-                fileIDs: fixture.candidate.fileIDs,
-                globalReferences: ["G1", "G2"],
-                deterministic: DeterministicDocumentComparison(
-                    tokenOverlap: 0.5,
-                    shingleSimilarity: 0.2,
-                    lengthDifference: 0.1,
-                    comparedCharacterCount: 400
-                ),
-                semantic: DocumentSemanticAssessment(
-                    relationship: .sameTopic,
-                    summary: "The documents discuss the same topic.",
-                    confidence: 0.8
-                )
-            )
+        let observation = documentObservation(
+            candidate: fixture.candidate,
+            relationship: .sameTopic,
+            confidence: 0.8
         )
 
         XCTAssertNil(
@@ -148,12 +117,81 @@ final class AgentDeterministicSemanticFindingTests: XCTestCase {
             fileCount: 3,
             allowedDispositions: [.keep, .move, .review]
         )
-        let partialObservation = AgentObservation(
+        let partialObservation = documentObservation(
+            candidate: fixture.candidate,
+            fileIDs: Array(fixture.candidate.fileIDs.prefix(2)),
+            relationship: .sameTopic,
+            confidence: 0.8
+        )
+
+        XCTAssertNil(
+            AgentDeterministicFindingPlanner().finding(
+                candidate: fixture.candidate,
+                evidence: fixture.evidence,
+                observations: [partialObservation]
+            )
+        )
+    }
+
+    func testSemanticFastPathRefusesLowConfidenceRelationship() {
+        let fixture = makeFixture(
+            fileCount: 2,
+            allowedDispositions: [.keep, .move, .review]
+        )
+        let observation = documentObservation(
+            candidate: fixture.candidate,
+            relationship: .sameTopic,
+            confidence: 0.4
+        )
+
+        XCTAssertNil(
+            AgentDeterministicFindingPlanner().finding(
+                candidate: fixture.candidate,
+                evidence: fixture.evidence,
+                observations: [observation]
+            )
+        )
+    }
+
+    func testSemanticFastPathRefusesConflictingLocalSemanticEvidence() {
+        let fixture = makeFixture(
+            fileCount: 2,
+            allowedDispositions: [.keep, .move, .review]
+        )
+        let related = documentObservation(
+            candidate: fixture.candidate,
+            relationship: .sameTopic,
+            confidence: 0.85
+        )
+        let conflicting = documentObservation(
+            candidate: fixture.candidate,
+            relationship: .unrelated,
+            confidence: 0.9
+        )
+
+        XCTAssertNil(
+            AgentDeterministicFindingPlanner().finding(
+                candidate: fixture.candidate,
+                evidence: fixture.evidence,
+                observations: [related, conflicting]
+            )
+        )
+    }
+
+    private func documentObservation(
+        candidate: AnalysisCandidate,
+        fileIDs: [UUID]? = nil,
+        relationship: DocumentSemanticRelationship,
+        confidence: Double
+    ) -> AgentObservation {
+        let ids = fileIDs ?? candidate.fileIDs
+        return AgentObservation(
             type: .documentComparison,
-            candidateID: fixture.candidate.id,
-            content: "semanticRelationship=sameTopic",
+            candidateID: candidate.id,
+            content: "semanticRelationship=\(relationship.rawValue)",
+            globalReferences: ["G1", "G2"],
             documentComparison: DocumentComparisonObservation(
-                fileIDs: Array(fixture.candidate.fileIDs.prefix(2)),
+                fileIDs: ids,
                 globalReferences: ["G1", "G2"],
                 deterministic: DeterministicDocumentComparison(
                     tokenOverlap: 0.5,
@@ -162,18 +200,10 @@ final class AgentDeterministicSemanticFindingTests: XCTestCase {
                     comparedCharacterCount: 400
                 ),
                 semantic: DocumentSemanticAssessment(
-                    relationship: .sameTopic,
-                    summary: "Two files discuss the same topic.",
-                    confidence: 0.8
+                    relationship: relationship,
+                    summary: "Semantic comparison fixture.",
+                    confidence: confidence
                 )
-            )
-        )
-
-        XCTAssertNil(
-            AgentDeterministicFindingPlanner().finding(
-                candidate: fixture.candidate,
-                evidence: fixture.evidence,
-                observations: [partialObservation]
             )
         )
     }
