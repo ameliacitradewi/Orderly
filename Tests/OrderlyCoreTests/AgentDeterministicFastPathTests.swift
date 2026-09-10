@@ -36,7 +36,10 @@ final class AgentDeterministicFastPathTests: XCTestCase {
         XCTAssertEqual(state.executedToolCalls.count, 2)
 
         let finding = try XCTUnwrap(state.findings.first)
-        XCTAssertEqual(finding.relationship, .exactDuplicate)
+        XCTAssertEqual(
+            finding.relationship.rawValue,
+            CandidateRelationship.exactDuplicate.rawValue
+        )
         XCTAssertEqual(finding.confidence, 1.0, accuracy: 0.0001)
 
         let proposals = Dictionary(
