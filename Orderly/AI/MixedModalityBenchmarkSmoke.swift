@@ -60,6 +60,7 @@ enum MixedModalityBenchmarkSmoke {
     static func run() async throws {
         print("======== MIXED MODALITY BENCHMARK START ========")
         print("orchestration=ResilientAgentCoordinator")
+        print("benchmarkMode=semantic-path-coverage")
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("Orderly-Mixed-Benchmark-\(UUID().uuidString)")
@@ -159,22 +160,23 @@ enum MixedModalityBenchmarkSmoke {
             throw BenchmarkError.missingDuplicateCandidate
         }
 
-        // Keep the deterministic scan/hash result, but use focused two-file semantic
-        // candidates so this benchmark measures each intelligence path independently
-        // instead of depending on ClutterAnalyzer category batch composition.
+        // This is a coverage/performance harness, not an autonomous tool-choice score.
+        // The focused semantic candidates explicitly require their modality path so
+        // repeated benchmark runs measure the same Qwen/PDF/FastVLM workload instead
+        // of sometimes stopping after metadata-only evidence.
         let documentCandidate = AnalysisCandidate(
             id: UUID(),
             type: .grouping,
             fileIDs: [proposalA.id, proposalB.id],
             confidence: 1,
-            reason: "Two proposal PDFs may be revisions of the same underlying document; inspect their content and compare if needed."
+            reason: "Benchmark coverage requirement: determine whether these two PDFs are revisions of the same underlying document. Inspect both PDFs with inspectPDFContent, then use compareDocumentContent on their observed G references before finishCandidate. Metadata-only comparison is insufficient for this benchmark candidate."
         )
         let imageCandidate = AnalysisCandidate(
             id: UUID(),
             type: .grouping,
             fileIDs: [imageA.id, imageB.id],
             confidence: 1,
-            reason: "Two screenshots may be visual variants of the same underlying screen; inspect and compare them if needed."
+            reason: "Benchmark coverage requirement: determine whether these two screenshots are visual variants of the same underlying screen. Inspect both images with inspectImageContent, then use compareImageContent on their observed G references before finishCandidate. compareGlobalFiles or filename/timestamp similarity cannot answer this visual question."
         )
 
         let benchmarkCandidates = [
