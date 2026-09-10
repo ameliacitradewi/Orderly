@@ -3,12 +3,13 @@ import Foundation
 /// Repairs bounded agent decisions without expanding filesystem authority.
 ///
 /// Normal behavior only fills missing references or canonicalizes a local F alias to
-/// the trusted G identity of the same file. After the validator explicitly rejects a
-/// cross-file semantic claim for missing semantic evidence, this resolver may also
-/// redirect the next invalid/non-semantic action to the minimum read-only semantic
-/// inspection/comparison needed to resolve that feedback. It never selects an outside
-/// path, never changes a cleanup proposal, and stops forcing recovery when semantic
-/// evidence has been gathered or the required content is unavailable.
+/// the trusted G identity of the same file. Trusted workflows may declare a typed
+/// semantic investigation requirement; in that case this resolver redirects an
+/// irrelevant model-selected read-only action to the minimum required inspection or
+/// comparison before the candidate can finish. After validator feedback, the same
+/// bounded mechanism is also used for recovery. It never selects an outside path,
+/// never changes a cleanup proposal, and stops forcing recovery when semantic evidence
+/// has been gathered or the required content is unavailable.
 struct AgentDecisionReferenceResolver {
     func resolve(
         _ decision: AgentDecision,
@@ -121,6 +122,25 @@ struct AgentDecisionReferenceResolver {
             .subtracting(unavailableImages)
             .sorted()
 
+        if let required = requiredInvestigationDecision(
+            original: decision,
+            requirement: candidate.investigationRequirement,
+            availableLocalPDFs: availableLocalPDFs,
+            inspectedGlobalPDFs: inspectedGlobalPDFs,
+            comparedDocumentPairKeys: comparedDocumentPairKeys,
+            availableLocalImages: availableLocalImages,
+            inspectedGlobalImages: inspectedGlobalImages,
+            comparedImagePairKeys: comparedImagePairKeys,
+            localGlobalReferences: localGlobalReferences
+        ) {
+            print("======== AGENT REQUIRED EVIDENCE ROUTING ========")
+            print("Requirement:", candidate.investigationRequirement.rawValue)
+            print("Original action:", decision.action.rawValue)
+            print("Required action:", required.action.rawValue)
+            print("Required fileReferences:", required.fileReferences)
+            return required
+        }
+
         if let recovered = semanticRecoveryDecision(
             original: decision,
             candidateObservations: candidateObservations,
@@ -231,6 +251,107 @@ struct AgentDecisionReferenceResolver {
         print("Filled fileReferences:", repairedReferences)
 
         return replacingReferences(in: decision, with: repairedReferences)
+    }
+
+    /// Enforces only an explicitly typed, trusted evidence requirement. This is not a
+    /// cleanup policy and cannot authorize a destructive action. It only prevents a
+    /// workflow that asked for semantic coverage from wasting turns on metadata-only
+    /// actions or attempting finishCandidate before the requested evidence exists.
+    private func requiredInvestigationDecision(
+        original: AgentDecision,
+        requirement: CandidateInvestigationRequirement,
+        availableLocalPDFs: [String],
+        inspectedGlobalPDFs: Set<String>,
+        comparedDocumentPairKeys: Set<String>,
+        availableLocalImages: [String],
+        inspectedGlobalImages: Set<String>,
+        comparedImagePairKeys: Set<String>,
+        localGlobalReferences: Set<String>
+    ) -> AgentDecision? {
+        switch requirement {
+        case .automatic:
+            return nil
+
+        case .documentSemantic:
+            if let next = availableLocalPDFs.first {
+                if Self.isValidInspectionChoice(
+                    original,
+                    action: .inspectPDFContent,
+                    allowedReferences: availableLocalPDFs
+                ) {
+                    return nil
+                }
+                return replacingAction(
+                    in: original,
+                    with: .inspectPDFContent,
+                    references: [next],
+                    reason: "This workflow requires document semantic evidence before completion."
+                )
+            }
+
+            let inspectedCandidatePDFs = inspectedGlobalPDFs.intersection(
+                localGlobalReferences
+            )
+            if let pair = Self.firstUncomparedPair(
+                in: inspectedCandidatePDFs,
+                completedPairKeys: comparedDocumentPairKeys
+            ) {
+                if Self.isValidPairChoice(
+                    original,
+                    action: .compareDocumentContent,
+                    allowedPair: pair
+                ) {
+                    return nil
+                }
+                return replacingAction(
+                    in: original,
+                    with: .compareDocumentContent,
+                    references: pair,
+                    reason: "This workflow requires a semantic document comparison before completion."
+                )
+            }
+            return nil
+
+        case .imageSemantic:
+            if let next = availableLocalImages.first {
+                if Self.isValidInspectionChoice(
+                    original,
+                    action: .inspectImageContent,
+                    allowedReferences: availableLocalImages
+                ) {
+                    return nil
+                }
+                return replacingAction(
+                    in: original,
+                    with: .inspectImageContent,
+                    references: [next],
+                    reason: "This workflow requires visual semantic evidence before completion."
+                )
+            }
+
+            let inspectedCandidateImages = inspectedGlobalImages.intersection(
+                localGlobalReferences
+            )
+            if let pair = Self.firstUncomparedPair(
+                in: inspectedCandidateImages,
+                completedPairKeys: comparedImagePairKeys
+            ) {
+                if Self.isValidPairChoice(
+                    original,
+                    action: .compareImageContent,
+                    allowedPair: pair
+                ) {
+                    return nil
+                }
+                return replacingAction(
+                    in: original,
+                    with: .compareImageContent,
+                    references: pair,
+                    reason: "This workflow requires a semantic image comparison before completion."
+                )
+            }
+            return nil
+        }
     }
 
     /// A validator rejection is a bounded signal that the agent tried to make a
