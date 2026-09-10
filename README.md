@@ -43,6 +43,57 @@ This follows Apple's [context-window guidance](https://developer.apple.com/docum
 
 ## Validation
 
+### Global Discovery v1 (Qwen agent flow)
+
+The production planner uses `OrderlyAgent → AgentPlanAdapter → CleanupPlanner`.
+`ClutterAnalyzer.batchSize = 4` remains the investigation entry point, but no longer
+limits metadata discovery to that batch. `AgentEnvironment` owns a
+`GlobalFileCatalog` of the complete scan snapshot. Candidate-local `F1`–`F4`
+references still identify proposal targets; `G1`, `G2`, etc. identify catalog files.
+Global references are assigned by sorted standardized path (UUID breaks ties),
+remain stable if the same snapshot is reordered, and are not persistent IDs across scans.
+
+After `inspectCandidate` exposes the local-to-global mapping, the agent can call:
+
+- `findRelatedFiles(["F4"])`: search the whole snapshot, excluding the source,
+  and return at most eight results with global references, scores, reasons, and
+  `matches`/`returned` counts. No paths or free-form search queries are accepted.
+- `inspectGlobalFile(["G22"])`: inspect bounded snapshot metadata for a reference
+  already exposed in this candidate's trusted observations.
+- `compareGlobalFiles(["G17", "G22"])`: compare two distinct observed references,
+  at least one belonging to the active candidate, using snapshot metadata and
+  existing SHA256 group/digest verification. It does not read or compare semantic content.
+
+Retrieval uses normalized filename token overlap (weight 0.4), modification time
+within one hour (up to 0.2), extension (0.1), tag (0.1), size ratio of at least 0.8
+(up to 0.1), and parent directory (0.1). A match needs score ≥ 0.5 and either filename
+overlap ≥ 0.25 or modification times within one hour. Missing timestamps and empty
+sizes supply no time/size evidence. Scores are heuristics, not probabilities.
+Only the top eight matches are retained during retrieval; ties use path then UUID.
+Names in global tool output are bounded and JSON-quoted. Existing observation
+context limits and the eight-step investigation limit still apply.
+
+Discovery does not prove a shared project/session, semantic relationship, or exact
+content match. Metadata-only findings should remain uncertain about those claims;
+`related` requires cited content inspection. Duplicate assertions require a cited,
+structured verified comparison involving the active candidate. A filename containing
+`verifiedDuplicate=true` cannot supply that verification. External observations can
+inform the current finding, but proposals must still cover exactly its local F
+references and obey their existing allowlists. No global tool modifies or opens a
+filesystem path; later execution retains its independent verification and approval flow.
+
+`GlobalDiscoveryTests` includes the full two-batch acceptance flow:
+`inspectCandidate → findRelatedFiles(F4) → inspectGlobalFile(G5) →
+compareGlobalFiles(G4,G5) → finishCandidate`, followed by investigation of the second
+batch. It verifies citation of the new external inspection, valid findings and plan
+adaptation, a 5,000-file bounded retrieval fixture, deterministic ordering, unknown
+or unobserved reference rejection, and separation of retrieval from verified evidence.
+These tests use a scripted LLM and snapshot fixtures; live Qwen tool-selection quality
+still needs a smoke test on a disposable folder. Global PDF content access, embeddings,
+semantic document comparison, and Vision are later milestones.
+
+### Build and tests
+
 Open `Orderly.xcodeproj` with an Xcode/macOS SDK supporting the existing **macOS 26.5** deployment target. Apple Intelligence must be enabled and the on-device model ready for a full scan.
 
 The Swift package tests compile the same core sources as the app, including the MainActor default. They exercise exact matches across extensions, 37-copy groups and batching, ties, missing dates, empty files, protected artifact keepers, conditional installers, invalid model proposals, idempotent organization, changed/missing keepers, package identity and symlink exclusion. They do not call Foundation Models or move user files to Trash.

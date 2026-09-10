@@ -15,17 +15,29 @@ final class CleanupPlanBuilder {
             }
         }
 
-        // Resolve EVERY scanned file, even if a model response was malformed or incomplete.
-        // Keep the global duplicate keeper protected from artifact/installer recommendations.
+        // Agent proposals are consumed as-is. Missing proposals default to review,
+        // and policy is reapplied only as a capability check.
         var groups: [String: [FileMetadata]] = [:]
         for file in files {
-            let decision = CleanupPolicy.resolve(proposed[file.id], for: file, root: folder)
+            let decision = proposed[file.id] ?? .review
+            let allowed = CleanupPolicy.allowedDispositions(
+                for: file,
+                root: folder
+            )
+            guard allowed.contains(decision) else { continue }
+
             switch decision {
             case .trash:
                 let key = file.duplicateGroupID.map { "duplicate:\($0.uuidString)" }
                     ?? (CleanupPolicy.isSafeArtifact(file) ? "artifacts" : "installers")
                 groups["delete:" + key, default: []].append(file)
             case .move:
+                let destination = CleanupPolicy.destination(
+                    for: file,
+                    root: folder
+                )
+                guard file.url.deletingLastPathComponent().standardizedFileURL
+                    != destination else { continue }
                 groups["organize:" + file.fileType.tagName, default: []].append(file)
             case .keep, .review: break
             }

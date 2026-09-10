@@ -15,10 +15,8 @@ final class ModelPlanValidator {
                 issues.append("Duplicate decision for \(ref).")
                 continue
             }
-            if let required = file.requiredDisposition {
-                if decision.disposition != required { issues.append("\(ref) must be \(required.rawValue).") }
-            } else if !file.isInstallerCandidate || ![FileDisposition.trash, .move].contains(decision.disposition) {
-                issues.append("Invalid installer recommendation for \(ref).")
+            if !file.allowedDispositions.contains(decision.disposition) {
+                issues.append("\(decision.disposition.rawValue) is not allowed for \(ref).")
             }
         }
         if seen != Set(expected.keys) { issues.append("Missing file decisions.") }

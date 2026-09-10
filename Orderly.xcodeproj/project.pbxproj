@@ -6,6 +6,17 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		65058E49304FCB2F00723812 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E48304FCB2F00723812 /* MLXHuggingFace */; };
+		65058E4B304FCB2F00723812 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4A304FCB2F00723812 /* MLXLLM */; };
+		65058E4D304FCB2F00723812 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4C304FCB2F00723812 /* MLXLMCommon */; };
+		65058E50304FCC2600723812 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4F304FCC2600723812 /* HuggingFace */; };
+		65058E53304FCC4400723812 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E52304FCC4400723812 /* Hub */; };
+		65058E55304FCC4400723812 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E54304FCC4400723812 /* Tokenizers */; };
+		65058E57304FCC4400723812 /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E56304FCC4400723812 /* Transformers */; };
+		65058E59304FD00000723812 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E58304FD00000723812 /* MLXVLM */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		65058B7E3048241B00723812 /* Orderly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orderly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +34,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				65058E57304FCC4400723812 /* Transformers in Frameworks */,
+				65058E4B304FCB2F00723812 /* MLXLLM in Frameworks */,
+				65058E59304FD00000723812 /* MLXVLM in Frameworks */,
+				65058E53304FCC4400723812 /* Hub in Frameworks */,
+				65058E55304FCC4400723812 /* Tokenizers in Frameworks */,
+				65058E4D304FCB2F00723812 /* MLXLMCommon in Frameworks */,
+				65058E49304FCB2F00723812 /* MLXHuggingFace in Frameworks */,
+				65058E50304FCC2600723812 /* HuggingFace in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +84,14 @@
 			);
 			name = Orderly;
 			packageProductDependencies = (
+				65058E48304FCB2F00723812 /* MLXHuggingFace */,
+				65058E4A304FCB2F00723812 /* MLXLLM */,
+				65058E4C304FCB2F00723812 /* MLXLMCommon */,
+				65058E58304FD00000723812 /* MLXVLM */,
+				65058E4F304FCC2600723812 /* HuggingFace */,
+				65058E52304FCC4400723812 /* Hub */,
+				65058E54304FCC4400723812 /* Tokenizers */,
+				65058E56304FCC4400723812 /* Transformers */,
 			);
 			productName = Orderly;
 			productReference = 65058B7E3048241B00723812 /* Orderly.app */;
@@ -94,6 +121,11 @@
 			);
 			mainGroup = 65058B753048241B00723812;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				65058E4E304FCC2600723812 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 65058B7F3048241B00723812 /* Products */;
 			projectDirPath = "";
@@ -256,7 +288,17 @@
 				DEVELOPMENT_TEAM = 59X728Y3L6;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -288,7 +330,17 @@
 				DEVELOPMENT_TEAM = 59X728Y3L6;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -331,6 +383,76 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.31.4;
+			};
+		};
+		65058E4E304FCC2600723812 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.10.0;
+			};
+		};
+		65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		65058E48304FCB2F00723812 /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+		65058E4A304FCB2F00723812 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		65058E4C304FCB2F00723812 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		65058E58304FD00000723812 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
+		};
+		65058E4F304FCC2600723812 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E4E304FCC2600723812 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		65058E52304FCC4400723812 /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		65058E54304FCC4400723812 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		65058E56304FCC4400723812 /* Transformers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Transformers;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 65058B763048241B00723812 /* Project object */;
 }

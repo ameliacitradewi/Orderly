@@ -34,7 +34,11 @@ struct MainView: View {
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
     private let evidenceEngine = EvidenceEngine()
-    private let modelSession = OrderlyModelSession()
+    private let agent = OrderlyAgent(
+        llm: QwenMLXService(),
+        visionLanguageService: FastVLMVisionService()
+    )
+    private let agentPlanAdapter = AgentPlanAdapter()
     private let cleanupPlanner = CleanupPlanner()
     private let executionEngine = ExecutionEngine()
 
@@ -67,6 +71,7 @@ struct MainView: View {
                 .padding(20)
             }
         }
+
     }
 
     @ViewBuilder
@@ -122,6 +127,9 @@ struct MainView: View {
                         )
                     }
                 )
+                .onAppear {
+                    print("======== CLEANUP PLAN VIEW APPEARED ========")
+                }
 
             } else if let aiError {
 
@@ -251,15 +259,10 @@ struct MainView: View {
                 return
             }
 
-            var isAccessActive = true
-
             defer {
-
-                if isAccessActive {
-                    securityAccess.stopAccessing(
-                        url
-                    )
-                }
+                securityAccess.stopAccessing(
+                    url
+                )
             }
 
             do {
@@ -289,12 +292,6 @@ struct MainView: View {
                     rootFolder: url
                 )
 
-                securityAccess.stopAccessing(
-                    url
-                )
-
-                isAccessActive = false
-
                 print("======== ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
                 print("Candidates:", result.candidates.count)
@@ -318,9 +315,13 @@ struct MainView: View {
 
                 do {
 
-                    let modelPlan = try await modelSession.analyze(
+                    let agentState = try await agent.run(
                         analysis: result,
                         evidence: evidence
+                    )
+                    let modelPlan = agentPlanAdapter.makeModelPlan(
+                        state: agentState,
+                        analysis: result
                     )
 
                     print("======== MODEL PLAN ========")
@@ -376,6 +377,9 @@ struct MainView: View {
                 } catch is CancellationError {
                     return
                 } catch {
+                    print("======== AGENT PLANNING FAILED ========")
+                    print(String(reflecting: error))
+                    print(error.localizedDescription)
 
                     await MainActor.run {
 

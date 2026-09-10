@@ -15,24 +15,33 @@ nonisolated struct CleanupPolicy: Sendable {
         ) != nil
     }
 
-    /// Nil means the model may choose Delete or Organize for a potential installer.
-    /// Fixed rules are enforced again in the builder and immediately before execution.
-    static func requiredDisposition(for file: FileMetadata, root: URL) -> FileDisposition? {
-        if file.duplicateGroupID != nil {
-            guard let keeper = file.duplicateKeeperID else { return .keep }
-            return file.id == keeper ? .keep : .trash
+    /// Returns the actions an agent may propose. This method constrains a
+    /// decision; it never chooses one on the agent's behalf.
+    static func allowedDispositions(
+        for file: FileMetadata,
+        root: URL
+    ) -> [FileDisposition] {
+        if let keeper = file.duplicateKeeperID,
+           file.id == keeper {
+            return [.keep]
         }
-        if isSafeArtifact(file) { return .trash }
-        if isInstallerCandidate(file) { return nil }
-        return file.url.deletingLastPathComponent().standardizedFileURL == destination(for: file, root: root)
-            ? .keep : .move
-    }
 
-    static func resolve(_ proposed: FileDisposition?, for file: FileMetadata, root: URL) -> FileDisposition {
-        if let required = requiredDisposition(for: file, root: root) { return required }
-        if proposed == .trash { return .trash }
-        return file.url.deletingLastPathComponent().standardizedFileURL == destination(for: file, root: root)
-            ? .keep : .move
+        if file.duplicateGroupID != nil {
+            guard file.duplicateKeeperID != nil else {
+                return [.keep, .review]
+            }
+            return [.keep, .trash, .review]
+        }
+
+        if isSafeArtifact(file) {
+            return [.keep, .trash, .review]
+        }
+
+        if isInstallerCandidate(file) {
+            return [.keep, .move, .trash, .review]
+        }
+
+        return [.keep, .move, .review]
     }
 
     static func destination(for file: FileMetadata, root: URL) -> URL {

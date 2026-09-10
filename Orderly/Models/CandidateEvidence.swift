@@ -13,7 +13,7 @@ struct CandidateFileEvidence: Sendable {
     let size: Int64
     let modifiedAt: Date?
     let relativePath: String
-    let requiredDisposition: FileDisposition?
+    let allowedDispositions: [FileDisposition]
     let isInstallerCandidate: Bool
     let duplicateCopyCount: Int
     let duplicateKeeperName: String?

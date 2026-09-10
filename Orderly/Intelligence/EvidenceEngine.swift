@@ -16,7 +16,10 @@ final class EvidenceEngine {
                 return CandidateFileEvidence(
                     fileID: id, reference: reference, name: file.name, tag: file.fileType,
                     size: file.size, modifiedAt: file.modifiedAt, relativePath: relative,
-                    requiredDisposition: CleanupPolicy.requiredDisposition(for: file, root: rootFolder),
+                    allowedDispositions: CleanupPolicy.allowedDispositions(
+                        for: file,
+                        root: rootFolder
+                    ),
                     isInstallerCandidate: CleanupPolicy.isInstallerCandidate(file),
                     duplicateCopyCount: file.duplicateCopyCount,
                     duplicateKeeperName: keeper?.name, duplicateKeeperModifiedAt: keeper?.modifiedAt

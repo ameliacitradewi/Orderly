@@ -136,12 +136,17 @@ actor ExecutionEngine {
                 }
 
                 if action.type == .trash {
-                    guard CleanupPolicy.resolve(.trash, for: file, root: rootFolder) == .trash else {
+                    guard CleanupPolicy.allowedDispositions(for: file, root: rootFolder).contains(.trash) else {
                         throw ExecutionEngineError.invalidCleanupPolicy
                     }
                 } else if action.type == .move {
-                    guard CleanupPolicy.resolve(.move, for: file, root: rootFolder) == .move,
-                          action.destination?.standardizedFileURL == CleanupPolicy.destination(for: file, root: rootFolder) else {
+                    let destination = CleanupPolicy.destination(
+                        for: file,
+                        root: rootFolder
+                    )
+                    guard CleanupPolicy.allowedDispositions(for: file, root: rootFolder).contains(.move),
+                          action.destination?.standardizedFileURL == destination,
+                          file.url.deletingLastPathComponent().standardizedFileURL != destination else {
                         throw ExecutionEngineError.invalidCleanupPolicy
                     }
                 }
