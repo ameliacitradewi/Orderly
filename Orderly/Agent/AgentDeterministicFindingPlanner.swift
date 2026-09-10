@@ -12,7 +12,8 @@ struct AgentDeterministicFindingPlanner {
     ) -> AgentFinding? {
         guard candidate.type == .duplicate,
               evidence.files.count >= 2,
-              let keeper = Self.duplicateKeeper(in: evidence) else {
+              let keeper = Self.duplicateKeeper(in: evidence),
+              keeper.allowedDispositions.contains(.keep) else {
             return nil
         }
 
