@@ -12,8 +12,6 @@ actor QwenModelManager {
     private var loadingTask: Task<ModelContainer, Error>?
     private var inferenceTail: Task<Void, Never>?
 
-    /// Keeps the successfully loaded container alive and shares the same in-flight
-    /// task when more than one request arrives during the initial model load.
     func modelContainer() async throws -> ModelContainer {
         if let loadingTask {
             return try await loadingTask.value
@@ -45,9 +43,6 @@ actor QwenModelManager {
         }
     }
 
-    /// MLX model weights are shared, but inference requests are intentionally
-    /// serialized. Independent ChatSession instances still get clean transcripts,
-    /// while two app tasks cannot drive the same ModelContainer concurrently.
     func generate(prompt: String) async throws -> String {
         let predecessor = inferenceTail
 
@@ -58,14 +53,11 @@ actor QwenModelManager {
 
             try Task.checkCancellation()
             let model = try await self.modelContainer()
+            let purpose = Self.inferencePurpose(for: prompt)
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    // Four-file finishCandidate responses can legitimately contain
-                    // one proposal per file plus grounded evidence. 650 tokens was
-                    // observed truncating otherwise-valid JSON mid-object. Keep a
-                    // bounded but larger ceiling; generation still stops at EOS.
-                    maxTokens: 1_200,
+                    maxTokens: Self.maxTokens(for: purpose),
                     temperature: 0
                 ),
                 additionalContext: ["enable_thinking": false]
@@ -74,30 +66,30 @@ actor QwenModelManager {
             let firstStartedAt = Date()
             var response = try await session.respond(to: prompt)
             await LocalModelRuntimeMetrics.shared.recordQwenInference(
-                seconds: Date().timeIntervalSince(firstStartedAt)
+                seconds: Date().timeIntervalSince(firstStartedAt),
+                purpose: purpose,
+                promptCharacters: prompt.count,
+                outputCharacters: response.count
             )
 
-            // Structured agent/tool prompts are allowed one bounded regeneration when
-            // the model returns malformed or truncated JSON. The same ChatSession keeps
-            // the original instruction and prior response in context, so the retry does
-            // not need to copy untrusted observations into a new prompt. If the second
-            // response is still invalid, downstream typed decoders reject it normally.
             if Self.expectsJSONObject(prompt),
                !Self.containsValidJSONObject(response) {
                 print("======== QWEN STRUCTURED RESPONSE RETRY ========")
                 print("Previous JSON response was incomplete or malformed; regenerating once.")
 
+                let retryPrompt = """
+                Your previous response was incomplete or invalid JSON.
+                Regenerate the complete JSON object requested by the previous instruction.
+                Preserve the same intended action and evidence, but keep summary, evidence descriptions, and proposal reasons concise.
+                Output one complete JSON object only, with no markdown or commentary.
+                """
                 let retryStartedAt = Date()
-                response = try await session.respond(
-                    to: """
-                    Your previous response was incomplete or invalid JSON.
-                    Regenerate the complete JSON object requested by the previous instruction.
-                    Preserve the same intended action and evidence, but keep summary, evidence descriptions, and proposal reasons concise.
-                    Output one complete JSON object only, with no markdown or commentary.
-                    """
-                )
+                response = try await session.respond(to: retryPrompt)
                 await LocalModelRuntimeMetrics.shared.recordQwenInference(
-                    seconds: Date().timeIntervalSince(retryStartedAt)
+                    seconds: Date().timeIntervalSince(retryStartedAt),
+                    purpose: purpose,
+                    promptCharacters: retryPrompt.count,
+                    outputCharacters: response.count
                 )
             }
 
@@ -109,6 +101,28 @@ actor QwenModelManager {
         }
 
         return try await generation.value
+    }
+
+    private static func inferencePurpose(for prompt: String) -> QwenInferencePurpose {
+        if prompt.contains("You are a semantic document comparison component inside Orderly.") {
+            return .documentSemantic
+        }
+        if prompt.contains("You convert visual observations into typed metadata for Orderly.") {
+            return .imageStructuring
+        }
+        if prompt.contains("You classify the relationship between two images for Orderly.") {
+            return .imageRelationship
+        }
+        return .agentDecision
+    }
+
+    private static func maxTokens(for purpose: QwenInferencePurpose) -> Int {
+        switch purpose {
+        case .documentSemantic, .imageStructuring, .imageRelationship:
+            return 320
+        case .agentDecision:
+            return 1_200
+        }
     }
 
     private static func expectsJSONObject(_ prompt: String) -> Bool {

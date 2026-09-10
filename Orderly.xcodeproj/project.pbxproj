@@ -427,11 +427,6 @@
 			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
 		};
-		65058E58304FD00000723812 /* MLXVLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXVLM;
-		};
 		65058E4F304FCC2600723812 /* HuggingFace */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 65058E4E304FCC2600723812 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
@@ -451,6 +446,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 65058E51304FCC4400723812 /* XCRemoteSwiftPackageReference "swift-transformers" */;
 			productName = Transformers;
+		};
+		65058E58304FD00000723812 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

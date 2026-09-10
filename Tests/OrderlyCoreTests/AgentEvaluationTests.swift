@@ -105,6 +105,9 @@ final class AgentEvaluationTests: XCTestCase {
         XCTAssertEqual(report.candidateCount, 2)
         XCTAssertEqual(report.findingCount, 1)
         XCTAssertEqual(report.completionRate, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(report.candidateFailureCount, 0)
+        XCTAssertEqual(report.agentSuccessRate, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(report.fallbackRate, 0, accuracy: 0.0001)
         XCTAssertEqual(report.totalAgentSteps, 5)
         XCTAssertEqual(report.maxStepsPerCandidate, 4)
         XCTAssertEqual(report.averageStepsPerCandidate, 2.5, accuracy: 0.0001)
@@ -119,6 +122,68 @@ final class AgentEvaluationTests: XCTestCase {
         XCTAssertEqual(report.reviewProposalCount, 1)
         XCTAssertEqual(report.trashProposalCount, 0)
         XCTAssertTrue(report.debugSummary().contains("completionRate=0.500"))
+        XCTAssertTrue(report.debugSummary().contains("agentSuccessRate=0.500"))
+    }
+
+    func testEvaluatorSeparatesCompletedFallbackFromAgentSuccess() {
+        let candidate = AnalysisCandidate(
+            id: UUID(),
+            type: .grouping,
+            fileIDs: [UUID()],
+            confidence: 1,
+            reason: "fallback"
+        )
+        let analysis = AnalysisResult(
+            analyzedFolder: URL(fileURLWithPath: "/tmp/orderly-fallback-evaluation"),
+            totalFiles: 1,
+            totalSize: 1,
+            fileTypes: [],
+            duplicateGroups: [],
+            candidates: [candidate],
+            analyzedAt: Date(timeIntervalSince1970: 1),
+            files: [],
+            unreadableHashCount: 0
+        )
+        let observation = AgentObservation(
+            type: .candidate,
+            candidateID: candidate.id,
+            content: "safe fallback"
+        )
+        var state = AgentState(goal: "Fallback", pendingCandidates: [])
+        state.status = .completed
+        state.observations = [observation]
+        state.findings = [
+            AgentFinding(
+                candidateID: candidate.id,
+                relationship: .uncertain,
+                summary: "Fallback",
+                evidence: [
+                    AgentEvidenceReference(
+                        observationID: observation.id,
+                        description: "Fallback activated."
+                    )
+                ],
+                proposals: [],
+                confidence: 0
+            )
+        ]
+        state.candidateFailures = [
+            AgentCandidateFailure(
+                candidateID: candidate.id,
+                errorType: "FixtureError",
+                message: "fixture"
+            )
+        ]
+
+        let report = AgentEvaluator().evaluate(
+            state: state,
+            analysis: analysis
+        )
+
+        XCTAssertEqual(report.completionRate, 1, accuracy: 0.0001)
+        XCTAssertEqual(report.candidateFailureCount, 1)
+        XCTAssertEqual(report.agentSuccessRate, 0, accuracy: 0.0001)
+        XCTAssertEqual(report.fallbackRate, 1, accuracy: 0.0001)
     }
 
     func testEvaluatorHandlesEmptyAnalysis() {
@@ -142,6 +207,8 @@ final class AgentEvaluationTests: XCTestCase {
         )
 
         XCTAssertEqual(report.completionRate, 1)
+        XCTAssertEqual(report.agentSuccessRate, 1)
+        XCTAssertEqual(report.fallbackRate, 0)
         XCTAssertEqual(report.totalAgentSteps, 0)
         XCTAssertEqual(report.averageStepsPerCandidate, 0)
         XCTAssertEqual(report.invalidOrFeedbackObservationRate, 0)

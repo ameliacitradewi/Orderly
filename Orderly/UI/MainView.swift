@@ -34,9 +34,11 @@ struct MainView: View {
     private let bookmarkStore = BookmarkStore()
     private let analysisEngine = AnalysisEngine()
     private let evidenceEngine = EvidenceEngine()
-    private let agent = OrderlyAgent(
-        llm: QwenMLXService(),
-        visionLanguageService: FastVLMVisionService()
+    private let agent = ResilientAgentCoordinator(
+        agent: OrderlyAgent(
+            llm: QwenMLXService(),
+            visionLanguageService: FastVLMVisionService()
+        )
     )
     private let agentPlanAdapter = AgentPlanAdapter()
     private let cleanupPlanner = CleanupPlanner()
@@ -319,6 +321,26 @@ struct MainView: View {
                         analysis: result,
                         evidence: evidence
                     )
+                    let evaluation = AgentEvaluator().evaluate(
+                        state: agentState,
+                        analysis: result
+                    )
+
+                    print("======== PRODUCTION AGENT EVALUATION ========")
+                    print(evaluation.debugSummary())
+                    if !agentState.candidateFailures.isEmpty {
+                        print("======== ISOLATED CANDIDATE FAILURES ========")
+                        for failure in agentState.candidateFailures {
+                            print(
+                                failure.candidateID.uuidString,
+                                "|",
+                                failure.errorType,
+                                "|",
+                                failure.message
+                            )
+                        }
+                    }
+
                     let modelPlan = agentPlanAdapter.makeModelPlan(
                         state: agentState,
                         analysis: result

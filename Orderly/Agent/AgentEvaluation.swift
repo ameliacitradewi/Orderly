@@ -7,6 +7,8 @@ struct AgentEvaluationReport: Codable, Sendable, Equatable {
     let candidateCount: Int
     let findingCount: Int
     let completionRate: Double
+    let candidateFailureCount: Int
+    let agentSuccessRate: Double
     let totalAgentSteps: Int
     let maxStepsPerCandidate: Int
     let averageStepsPerCandidate: Double
@@ -22,6 +24,11 @@ struct AgentEvaluationReport: Codable, Sendable, Equatable {
     var invalidOrFeedbackObservationRate: Double {
         guard observationCount > 0 else { return 0 }
         return Double(errorObservationCount) / Double(observationCount)
+    }
+
+    var fallbackRate: Double {
+        guard candidateCount > 0 else { return 0 }
+        return Double(candidateFailureCount) / Double(candidateCount)
     }
 }
 
@@ -61,6 +68,15 @@ struct AgentEvaluator {
         let completionRate = candidateCount == 0
             ? 1
             : Double(state.findings.count) / Double(candidateCount)
+
+        let failedCandidateIDs = Set(state.candidateFailures.map(\.candidateID))
+        let candidateFailureCount = failedCandidateIDs.count
+        let completedByAgentIDs = Set(state.findings.map(\.candidateID))
+            .subtracting(failedCandidateIDs)
+        let agentSuccessRate = candidateCount == 0
+            ? 1
+            : Double(completedByAgentIDs.count) / Double(candidateCount)
+
         let averageSteps = candidateCount == 0
             ? 0
             : Double(totalSteps) / Double(candidateCount)
@@ -69,6 +85,8 @@ struct AgentEvaluator {
             candidateCount: candidateCount,
             findingCount: state.findings.count,
             completionRate: completionRate,
+            candidateFailureCount: candidateFailureCount,
+            agentSuccessRate: agentSuccessRate,
             totalAgentSteps: totalSteps,
             maxStepsPerCandidate: stepsByCandidate.values.max() ?? 0,
             averageStepsPerCandidate: averageSteps,
@@ -95,6 +113,9 @@ extension AgentEvaluationReport {
         candidates=\(candidateCount)
         findings=\(findingCount)
         completionRate=\(Self.number(completionRate))
+        isolatedCandidateFailures=\(candidateFailureCount)
+        agentSuccessRate=\(Self.number(agentSuccessRate))
+        fallbackRate=\(Self.number(fallbackRate))
         agentSteps=\(totalAgentSteps)
         maxStepsPerCandidate=\(maxStepsPerCandidate)
         averageStepsPerCandidate=\(Self.number(averageStepsPerCandidate))

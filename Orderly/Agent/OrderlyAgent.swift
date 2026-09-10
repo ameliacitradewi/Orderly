@@ -6,22 +6,28 @@ final class OrderlyAgent {
     private let contextBuilder = AgentContextBuilder()
     private let decoder = AgentDecisionDecoder()
     private let referenceResolver = AgentDecisionReferenceResolver()
+    private let deterministicEvidencePlanner = AgentDeterministicEvidencePlanner()
+    private let deterministicFindingPlanner = AgentDeterministicFindingPlanner()
     private let planValidator = AgentPlanValidator()
+    private let deterministicFastPaths: Bool
     private let maxIterationsPerCandidate = 8
 
     init(
         llm: any LLMService,
         visionLanguageService: (any VisionLanguageService)? = nil,
-        toolRouter: ToolRouter? = nil
+        toolRouter: ToolRouter? = nil,
+        deterministicFastPaths: Bool = false
     ) {
         self.llm = llm
+        self.deterministicFastPaths = deterministicFastPaths
         if let toolRouter {
             self.toolRouter = toolRouter
         } else {
             let imageSemanticAnalyzer = visionLanguageService.map {
                 StructuredImageSemanticAnalyzer(
                     visionModel: $0,
-                    textModel: llm
+                    textModel: llm,
+                    preferVisionOnly: deterministicFastPaths
                 )
             }
             self.toolRouter = ToolRouter(
@@ -91,24 +97,62 @@ final class OrderlyAgent {
             try Task.checkCancellation()
             state.iteration += 1
 
-            let prompt = contextBuilder.build(
-                state: state,
-                candidate: candidate
-            )
-
             print("")
             print("======== AGENT STEP \(state.iteration) ========")
 
-            let rawResponse = try await llm.generate(
-                prompt: prompt
-            )
-            let decodedDecision = try decoder.decode(rawResponse)
-            let decision = referenceResolver.resolve(
-                decodedDecision,
-                candidate: candidate,
-                environment: environment,
-                observations: state.observations
-            )
+            if deterministicFastPaths,
+               let evidence = environment.evidenceByCandidate[candidate.id],
+               let deterministicFinding = deterministicFindingPlanner.finding(
+                   candidate: candidate,
+                   evidence: evidence,
+                   observations: state.observations
+               ) {
+                let issues = planValidator.validate(
+                    finding: deterministicFinding,
+                    candidate: candidate,
+                    evidence: evidence,
+                    observations: state.observations
+                )
+                if issues.isEmpty {
+                    print("======== AGENT DETERMINISTIC FINDING FAST PATH ========")
+                    print("Bypassed Qwen because SHA verification, keeper metadata, and the allowlist fully determine this exact-duplicate finding.")
+                    Self.printFinding(deterministicFinding)
+                    return deterministicFinding
+                }
+
+                print("======== DETERMINISTIC FINDING VALIDATION FALLBACK ========")
+                print("Fast-path finding was not accepted; returning control to the model-driven loop.")
+                for issue in issues {
+                    print("-", issue)
+                }
+            }
+
+            let decision: AgentDecision
+            if deterministicFastPaths,
+               let deterministicDecision = deterministicEvidencePlanner.nextDecision(
+                   candidate: candidate,
+                   environment: environment,
+                   observations: state.observations
+               ) {
+                print("======== AGENT DETERMINISTIC EVIDENCE STEP ========")
+                print("Bypassed Qwen planner for mandatory bounded read-only evidence.")
+                decision = deterministicDecision
+            } else {
+                let prompt = contextBuilder.build(
+                    state: state,
+                    candidate: candidate
+                )
+                let rawResponse = try await llm.generate(
+                    prompt: prompt
+                )
+                let decodedDecision = try decoder.decode(rawResponse)
+                decision = referenceResolver.resolve(
+                    decodedDecision,
+                    candidate: candidate,
+                    environment: environment,
+                    observations: state.observations
+                )
+            }
 
             try validate(
                 decision,
@@ -190,31 +234,7 @@ final class OrderlyAgent {
                     continue
                 }
 
-                print("======== AGENT FINDING ========")
-                print("Relationship:", finding.relationship.rawValue)
-                print("Summary:", finding.summary)
-                print("Evidence:")
-                for reference in finding.evidence {
-                    print(
-                        "-",
-                        reference.observationID.uuidString,
-                        "->",
-                        reference.description
-                    )
-                }
-                print("Proposals:")
-                for proposal in finding.proposals {
-                    print(
-                        proposal.fileReference,
-                        "->",
-                        proposal.disposition.rawValue,
-                        "|",
-                        proposal.reason
-                    )
-                }
-                print("Confidence:", finding.confidence)
-                print("======== AGENT FINDING VALIDATION PASS ========")
-
+                Self.printFinding(finding)
                 return finding
             }
 
@@ -496,6 +516,33 @@ final class OrderlyAgent {
             },
             confidence: finding.confidence
         )
+    }
+
+    private static func printFinding(_ finding: AgentFinding) {
+        print("======== AGENT FINDING ========")
+        print("Relationship:", finding.relationship.rawValue)
+        print("Summary:", finding.summary)
+        print("Evidence:")
+        for reference in finding.evidence {
+            print(
+                "-",
+                reference.observationID.uuidString,
+                "->",
+                reference.description
+            )
+        }
+        print("Proposals:")
+        for proposal in finding.proposals {
+            print(
+                proposal.fileReference,
+                "->",
+                proposal.disposition.rawValue,
+                "|",
+                proposal.reason
+            )
+        }
+        print("Confidence:", finding.confidence)
+        print("======== AGENT FINDING VALIDATION PASS ========")
     }
 
     private static func render(_ references: [String]) -> String {

@@ -100,6 +100,50 @@ final class AgentSemanticGroundingTests: XCTestCase {
         XCTAssertTrue(issues.isEmpty, "Unexpected issues: \(issues)")
     }
 
+    func testValidatorRejectsMetadataOnlyVisualAndSessionClaim() {
+        let fixture = fixture(fileCount: 2)
+        let metadataObservation = AgentObservation(
+            type: .candidate,
+            candidateID: fixture.candidate.id,
+            content: "Two image files have similar names and nearby timestamps."
+        )
+        let finding = AgentFinding(
+            candidateID: fixture.candidate.id,
+            relationship: .grouping,
+            summary: "Two screenshots of similar UI elements, possibly from the same session.",
+            evidence: [
+                AgentEvidenceReference(
+                    observationID: metadataObservation.id,
+                    description: "The files have similar names and nearby timestamps."
+                )
+            ],
+            proposals: [
+                AgentFileProposal(
+                    fileReference: "F1",
+                    disposition: .review,
+                    reason: "Visual similarity suggests potential duplication, but it is not confirmed."
+                ),
+                AgentFileProposal(
+                    fileReference: "F2",
+                    disposition: .review,
+                    reason: "Review before changing this file."
+                )
+            ],
+            confidence: 0.8
+        )
+
+        let issues = AgentPlanValidator().validate(
+            finding: finding,
+            candidate: fixture.candidate,
+            evidence: fixture.evidence,
+            observations: [metadataObservation]
+        )
+
+        XCTAssertTrue(issues.contains(where: {
+            $0.contains("Cross-file semantic claims")
+        }))
+    }
+
     private func fixture(
         fileCount: Int
     ) -> (candidate: AnalysisCandidate, evidence: CandidateEvidence) {

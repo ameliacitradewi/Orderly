@@ -150,6 +150,19 @@ struct AgentPlanValidator {
             )
         }
 
+        // Metadata, filenames, timestamps, and SHA non-matches can rule out some exact
+        // duplicate hypotheses, but cannot establish a cross-file semantic relationship.
+        // Keep this check relationship-agnostic because a model can otherwise put an
+        // unsupported visual/session/topic claim inside a grouping or uncertain finding.
+        if candidate.fileIDs.count > 1,
+           finding.assertsCrossFileSemanticRelationship,
+           !hasRelatedDocumentComparison,
+           !hasRelatedImageComparison {
+            issues.append(
+                "Cross-file semantic claims such as visual similarity, shared session/project/topic/subject, or image/document variants require a cited semantic comparison. Metadata-only evidence cannot establish that relationship."
+            )
+        }
+
         // A category batch is not a semantic cluster. If the natural-language finding
         // claims that *all* candidate files share a topic/project/subject, the cited
         // semantic comparisons must form one connected evidence graph covering every
@@ -272,6 +285,28 @@ private extension AgentFinding {
                 of: duplicateWordPattern,
                 options: .regularExpression
             ) != nil
+        }
+    }
+
+    var assertsCrossFileSemanticRelationship: Bool {
+        let patterns = [
+            #"\bvisual\s+similarity\s+(suggests|indicates|shows|supports|implies)\b"#,
+            #"\bvisually\s+(similar|related)\b"#,
+            #"\bsimilar\s+(ui|screens?|scenes?|subjects?|content|images?|documents?|screenshots?)\b"#,
+            #"\b(same|shared)\s+(session|project|topic|subject|scene|screen|content)\b"#,
+            #"\b(images?|screenshots?|documents?)\s+(are\s+)?(variants?|related)\b"#,
+            #"\bvariants?\s+of\s+(the\s+)?same\b"#
+        ]
+        let texts = [summary] + proposals.map(\.reason)
+
+        return texts.contains { text in
+            let lowercased = text.lowercased()
+            return patterns.contains { pattern in
+                lowercased.range(
+                    of: pattern,
+                    options: .regularExpression
+                ) != nil
+            }
         }
     }
 

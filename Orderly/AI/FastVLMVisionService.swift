@@ -68,7 +68,10 @@ actor FastVLMModelManager {
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    maxTokens: 220,
+                    // The visual adapter now requests exactly three compact structured
+                    // lines with a <=45-word summary. 120 tokens leaves headroom for a
+                    // complete response while reducing unnecessary generation latency.
+                    maxTokens: 120,
                     temperature: 0
                 )
             )
@@ -77,7 +80,9 @@ actor FastVLMModelManager {
                 image: .url(imageURL)
             )
             await LocalModelRuntimeMetrics.shared.recordFastVLMInference(
-                seconds: Date().timeIntervalSince(startedAt)
+                seconds: Date().timeIntervalSince(startedAt),
+                promptCharacters: prompt.count,
+                outputCharacters: response.count
             )
             return response
         }
