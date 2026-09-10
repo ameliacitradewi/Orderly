@@ -68,11 +68,15 @@ struct AgentEvaluator {
         let completionRate = candidateCount == 0
             ? 1
             : Double(state.findings.count) / Double(candidateCount)
-        let candidateFailureCount = state.candidateFailures.count
-        let successfulCandidates = max(0, candidateCount - candidateFailureCount)
+
+        let failedCandidateIDs = Set(state.candidateFailures.map(\.candidateID))
+        let candidateFailureCount = failedCandidateIDs.count
+        let completedByAgentIDs = Set(state.findings.map(\.candidateID))
+            .subtracting(failedCandidateIDs)
         let agentSuccessRate = candidateCount == 0
             ? 1
-            : Double(successfulCandidates) / Double(candidateCount)
+            : Double(completedByAgentIDs.count) / Double(candidateCount)
+
         let averageSteps = candidateCount == 0
             ? 0
             : Double(totalSteps) / Double(candidateCount)
