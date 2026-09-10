@@ -6,6 +6,7 @@ final class OrderlyAgent {
     private let contextBuilder = AgentContextBuilder()
     private let decoder = AgentDecisionDecoder()
     private let referenceResolver = AgentDecisionReferenceResolver()
+    private let deterministicEvidencePlanner = AgentDeterministicEvidencePlanner()
     private let planValidator = AgentPlanValidator()
     private let maxIterationsPerCandidate = 8
 
@@ -91,24 +92,34 @@ final class OrderlyAgent {
             try Task.checkCancellation()
             state.iteration += 1
 
-            let prompt = contextBuilder.build(
-                state: state,
-                candidate: candidate
-            )
-
             print("")
             print("======== AGENT STEP \(state.iteration) ========")
 
-            let rawResponse = try await llm.generate(
-                prompt: prompt
-            )
-            let decodedDecision = try decoder.decode(rawResponse)
-            let decision = referenceResolver.resolve(
-                decodedDecision,
+            let decision: AgentDecision
+            if let deterministicDecision = deterministicEvidencePlanner.nextDecision(
                 candidate: candidate,
                 environment: environment,
                 observations: state.observations
-            )
+            ) {
+                print("======== AGENT DETERMINISTIC EVIDENCE STEP ========")
+                print("Bypassed Qwen planner for mandatory read-only evidence.")
+                decision = deterministicDecision
+            } else {
+                let prompt = contextBuilder.build(
+                    state: state,
+                    candidate: candidate
+                )
+                let rawResponse = try await llm.generate(
+                    prompt: prompt
+                )
+                let decodedDecision = try decoder.decode(rawResponse)
+                decision = referenceResolver.resolve(
+                    decodedDecision,
+                    candidate: candidate,
+                    environment: environment,
+                    observations: state.observations
+                )
+            }
 
             try validate(
                 decision,
