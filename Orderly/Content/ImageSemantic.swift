@@ -139,7 +139,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
             localReference: evidence.localReference,
             globalReference: evidence.globalReference,
             contentKind: parsed.contentKind,
-            summary: String(summary.prefix(512)),
+            summary: Self.boundSummary(summary),
             confidence: parsed.confidence
         )
     }
@@ -279,10 +279,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !stripped.isEmpty else { return nil }
 
-        let summary = stripped
-            .split(whereSeparator: \.isWhitespace)
-            .prefix(80)
-            .joined(separator: " ")
+        let summary = boundSummary(stripped, maxWords: 45, maxCharacters: 512)
         guard !summary.isEmpty else { return nil }
 
         let lower = summary.lowercased()
@@ -301,9 +298,56 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
 
         return ParsedResponse(
             contentKind: kind,
-            summary: String(summary.prefix(512)),
+            summary: summary,
             confidence: confidence
         )
+    }
+
+    /// Keeps model summaries compact without ever slicing through a word. When a
+    /// complete sentence exists inside the bounded prefix, prefer that boundary so UI
+    /// text and downstream semantic prompts do not end with fragments such as "it is".
+    private static func boundSummary(
+        _ text: String,
+        maxWords: Int = 80,
+        maxCharacters: Int = 512
+    ) -> String {
+        let normalized = text
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard !normalized.isEmpty else { return "" }
+
+        var selected: [Substring] = []
+        var characterCount = 0
+        let words = normalized.split(separator: " ")
+        let wordLimit = max(1, maxWords)
+        let characterLimit = max(1, maxCharacters)
+
+        for word in words.prefix(wordLimit) {
+            let added = word.count + (selected.isEmpty ? 0 : 1)
+            guard characterCount + added <= characterLimit else { break }
+            selected.append(word)
+            characterCount += added
+        }
+
+        guard !selected.isEmpty else {
+            return String(normalized.prefix(characterLimit))
+        }
+
+        let bounded = selected.joined(separator: " ")
+        let wasTruncated = selected.count < words.count || bounded.count < normalized.count
+        guard wasTruncated else { return bounded }
+
+        if let sentenceBoundary = bounded.lastIndex(where: { character in
+            character == "." || character == "!" || character == "?"
+        }) {
+            let sentence = String(bounded[...sentenceBoundary])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sentence.isEmpty {
+                return sentence
+            }
+        }
+
+        return bounded + "…"
     }
 
     private static func parseKind(_ value: String) -> ImageContentKind? {
