@@ -68,10 +68,10 @@ actor FastVLMModelManager {
             let session = ChatSession(
                 model,
                 generateParameters: GenerateParameters(
-                    // The visual adapter asks for at most 100 words. Keep enough room
-                    // for a complete description while preventing an unexpectedly long
-                    // VLM response from dominating interactive latency.
-                    maxTokens: 160,
+                    // The visual adapter now requests exactly three compact structured
+                    // lines with a <=45-word summary. 120 tokens leaves headroom for a
+                    // complete response while reducing unnecessary generation latency.
+                    maxTokens: 120,
                     temperature: 0
                 )
             )
