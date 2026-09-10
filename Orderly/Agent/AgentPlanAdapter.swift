@@ -18,8 +18,16 @@ struct AgentPlanAdapter {
             return recommendation(for: finding)
         }
 
+        let fallbackCount = Set(state.candidateFailures.map(\.candidateID)).count
+        let summary: String
+        if fallbackCount == 0 {
+            summary = "Orderly agent investigated \(recommendations.count) candidates."
+        } else {
+            summary = "Orderly prepared \(recommendations.count) candidate recommendations. \(fallbackCount) used a safe non-destructive fallback because investigation could not complete."
+        }
+
         return ModelCleanupPlan(
-            summary: "Orderly agent investigated \(recommendations.count) candidates.",
+            summary: summary,
             recommendations: recommendations
         )
     }
