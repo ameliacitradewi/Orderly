@@ -68,7 +68,7 @@ struct EmptyStateView: View {
                 onSelectFolder()
             } label: {
                 Label(
-                    "Select Folder...",
+                    "Select Folder",
                     systemImage: "folder"
                 )
             }
