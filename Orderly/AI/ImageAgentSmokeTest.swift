@@ -91,7 +91,7 @@ enum ImageAgentSmokeTest {
 
         let state = try await OrderlyAgent(
             llm: AppleFoundationModelService(),
-            visionLanguageService: FastVLMVisionService()
+            visionLanguageService: AppleFoundationVisionService()
         ).run(
             analysis: analysis,
             evidence: evidence
