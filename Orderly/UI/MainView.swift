@@ -234,44 +234,33 @@ struct MainView: View {
 
         isScanning = true
         isAnalyzing = false
+        isAIAnalyzing = false
 
         scanTask?.cancel()
         scanTask = Task {
 
-            guard securityAccess.startAccessing(
-                url
-            ) else {
-
+            guard securityAccess.startAccessing(url) else {
                 await MainActor.run {
-
                     aiError = "Orderly could not access this folder."
-
                     isScanning = false
                     isAnalyzing = false
+                    isAIAnalyzing = false
                 }
-
                 return
             }
 
             defer {
-                securityAccess.stopAccessing(
-                    url
-                )
+                securityAccess.stopAccessing(url)
             }
 
             do {
-
-                let scannedFiles = try await FileSystemService().scanDirectory(at: url)
+                let scannedFiles = try await FileSystemService()
+                    .scanDirectory(at: url)
                 try Task.checkCancellation()
 
                 await MainActor.run {
-
                     files = scannedFiles
                     isScanning = false
-                    isAnalyzing = true
-                }
-
-                await MainActor.run {
                     isAnalyzing = false
                     isAIAnalyzing = true
                 }
@@ -284,8 +273,6 @@ struct MainView: View {
 
                 let result = pipelineResult.analysis
                 let modelPlan = pipelineResult.modelPlan
-                files = result.files
-                analysisResult = result
 
                 print("======== PCC FULL ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
@@ -321,35 +308,24 @@ struct MainView: View {
                 print("Actions:", plan.actions.count)
 
                 await MainActor.run {
+                    files = result.files
+                    analysisResult = result
                     modelCleanupPlan = modelPlan
                     cleanupPlan = plan
                     isAIAnalyzing = false
                 }
-
-                } catch is CancellationError {
-                    return
-                } catch {
-                    print("======== AGENT PLANNING FAILED ========")
-                    print(String(reflecting: error))
-                    print(error.localizedDescription)
-
-                    await MainActor.run {
-
-                        aiError = error.localizedDescription
-                        isAIAnalyzing = false
-                    }
-                }
-
             } catch is CancellationError {
                 return
             } catch {
+                print("======== PCC FULL PIPELINE FAILED ========")
+                print(String(reflecting: error))
+                print(error.localizedDescription)
 
                 await MainActor.run {
-
                     aiError = error.localizedDescription
-
                     isScanning = false
                     isAnalyzing = false
+                    isAIAnalyzing = false
                 }
             }
         }
