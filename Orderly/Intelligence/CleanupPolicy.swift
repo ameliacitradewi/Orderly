@@ -56,7 +56,10 @@ nonisolated struct CleanupPolicy: Sendable {
                 return "Private Cloud Compute identified matching content, but a Last Modified date is missing. Keep all copies for review."
             }
             let date = keeper.modifiedAt?.formatted(.iso8601) ?? "unknown"
-            return "Private Cloud Compute identified \(file.duplicateCopyCount) exact-content copies. Keep \(keeper.name) "
+            let keeperRule = file.fileType == .image
+                ? "The keeper is the highest-resolution image in the duplicate group."
+                : "The keeper is the preferred copy for this duplicate group."
+            return "Private Cloud Compute identified \(file.duplicateCopyCount) copies of the same underlying content. \(keeperRule) Keep \(keeper.name) "
                 + "(\(keeper.url.path)), Last Modified: \(date). Delete the remaining copies to macOS Trash. "
                 + "Equal dates use alphabetical path order."
         }
