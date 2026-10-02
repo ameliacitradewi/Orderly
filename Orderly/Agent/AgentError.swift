@@ -10,7 +10,7 @@ enum AgentError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Qwen returned an invalid agent decision."
+            return "The Foundation Model returned an invalid agent decision."
         case .wrongCandidate:
             return "The agent attempted to act on another candidate."
         case .maximumIterationsReached:
