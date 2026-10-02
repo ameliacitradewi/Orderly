@@ -24,16 +24,21 @@ struct FileDetailsView: View {
             .width(min: 120, ideal: 160, max: 200)
 
             TableColumn("Size") { file in
-                Text(
-                    ByteCountFormatter.string(
-                        fromByteCount: file.size,
-                        countStyle: .file
+                if file.size == 0 && file.modifiedAt == nil {
+                    Text("—")
+                        .foregroundStyle(OrderlyTheme.secondaryText)
+                } else {
+                    Text(
+                        ByteCountFormatter.string(
+                            fromByteCount: file.size,
+                            countStyle: .file
+                        )
                     )
-                )
-                .font(.body.monospacedDigit())
-                .foregroundStyle(
-                    OrderlyTheme.secondaryText
-                )
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(
+                        OrderlyTheme.secondaryText
+                    )
+                }
             }
             .width(min: 80, ideal: 100, max: 120)
 
