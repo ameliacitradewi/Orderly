@@ -24,6 +24,6 @@ nonisolated struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
     }
 
     var tags: [String] {
-        [fileType.tagName] + (duplicateGroupID == nil ? [] : ["SHA256 Duplicate"])
+        [fileType.tagName] + (duplicateGroupID == nil ? [] : ["PCC Content Duplicate"])
     }
 }
