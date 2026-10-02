@@ -31,7 +31,7 @@ protocol ImagePairSemanticAnalyzing {
 
 /// Interprets two already-inspected image summaries plus trusted Vision similarity.
 /// This model never sees arbitrary filesystem paths and cannot authorize deletion.
-final class QwenImagePairSemanticAnalyzer: ImagePairSemanticAnalyzing {
+final class FoundationImagePairSemanticAnalyzer: ImagePairSemanticAnalyzing {
     private struct Response: Codable {
         let relationship: ImageSemanticRelationship
         let confidence: Double
