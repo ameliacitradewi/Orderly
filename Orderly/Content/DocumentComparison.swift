@@ -87,7 +87,7 @@ protocol DocumentSemanticAnalyzing {
     ) async throws -> DocumentSemanticAssessment
 }
 
-final class QwenDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
+final class FoundationDocumentSemanticAnalyzer: DocumentSemanticAnalyzing {
     private let llm: any LLMService
 
     init(llm: any LLMService) {
