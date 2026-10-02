@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		65058E49304FCB2F00723812 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E48304FCB2F00723812 /* MLXHuggingFace */; };
-		65058E4B304FCB2F00723812 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4A304FCB2F00723812 /* MLXLLM */; };
 		65058E4D304FCB2F00723812 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4C304FCB2F00723812 /* MLXLMCommon */; };
 		65058E50304FCC2600723812 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E4F304FCC2600723812 /* HuggingFace */; };
 		65058E53304FCC4400723812 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 65058E52304FCC4400723812 /* Hub */; };
@@ -35,7 +34,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				65058E57304FCC4400723812 /* Transformers in Frameworks */,
-				65058E4B304FCB2F00723812 /* MLXLLM in Frameworks */,
 				65058E59304FD00000723812 /* MLXVLM in Frameworks */,
 				65058E53304FCC4400723812 /* Hub in Frameworks */,
 				65058E55304FCC4400723812 /* Tokenizers in Frameworks */,
@@ -85,7 +83,6 @@
 			name = Orderly;
 			packageProductDependencies = (
 				65058E48304FCB2F00723812 /* MLXHuggingFace */,
-				65058E4A304FCB2F00723812 /* MLXLLM */,
 				65058E4C304FCB2F00723812 /* MLXLMCommon */,
 				65058E58304FD00000723812 /* MLXVLM */,
 				65058E4F304FCC2600723812 /* HuggingFace */,
@@ -211,7 +208,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -269,7 +266,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -282,6 +279,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Orderly/Orderly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -324,6 +322,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Orderly/Orderly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -416,11 +415,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXHuggingFace;
-		};
-		65058E4A304FCB2F00723812 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 65058E47304FCB2F00723812 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLLM;
 		};
 		65058E4C304FCB2F00723812 /* MLXLMCommon */ = {
 			isa = XCSwiftPackageProductDependency;
