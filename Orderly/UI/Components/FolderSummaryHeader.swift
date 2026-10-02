@@ -11,6 +11,10 @@ struct FolderSummaryHeader: View {
         }
     }
 
+    private var hasLocalMetadata: Bool {
+        files.contains { $0.size > 0 || $0.modifiedAt != nil }
+    }
+
     var body: some View {
 
         HStack(alignment: .bottom) {
@@ -41,10 +45,12 @@ struct FolderSummaryHeader: View {
 
                 MetricView(
                     title: "Total size",
-                    value: ByteCountFormatter.string(
-                        fromByteCount: totalSize,
-                        countStyle: .file
-                    )
+                    value: hasLocalMetadata
+                        ? ByteCountFormatter.string(
+                            fromByteCount: totalSize,
+                            countStyle: .file
+                        )
+                        : "Not collected"
                 )
 
                 MetricView(
