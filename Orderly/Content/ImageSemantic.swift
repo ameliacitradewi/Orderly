@@ -35,7 +35,7 @@ protocol ImageSemanticAnalyzing {
 /// 1. the VLM performs visual perception and is asked for a tiny typed line protocol;
 /// 2. if that response parses, use it directly without another text-model inference;
 /// 3. production fast-path mode can conservatively preserve non-empty VLM prose as an
-///    `uncertain`/explicitly named content kind instead of spending a Qwen structuring turn;
+///    `uncertain`/explicitly named content kind instead of spending a Foundation Model structuring turn;
 /// 4. otherwise the optional text LLM remains a bounded compatibility fallback.
 ///
 /// VLM output is untrusted evidence. This layer never chooses a file disposition and
@@ -112,7 +112,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
         } else if preferVisionOnly,
                   let conservative = Self.conservativeVisionOnlyResponse(rawVisualDescription) {
             print("======== IMAGE SEMANTIC VISION-ONLY FAST PATH ========")
-            print("Used bounded FastVLM description without a Qwen structuring inference.")
+            print("Used bounded FastVLM description without a Foundation Model structuring inference.")
             parsed = conservative
         } else {
             guard let textModel else {
