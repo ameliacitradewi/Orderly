@@ -37,7 +37,7 @@ struct MainView: View {
     private let agent = ResilientAgentCoordinator(
         agent: OrderlyAgent(
             llm: AppleFoundationModelService(),
-            visionLanguageService: FastVLMVisionService()
+            visionLanguageService: AppleFoundationVisionService()
         )
     )
     private let agentPlanAdapter = AgentPlanAdapter()
