@@ -36,7 +36,7 @@ struct MainView: View {
     private let evidenceEngine = EvidenceEngine()
     private let agent = ResilientAgentCoordinator(
         agent: OrderlyAgent(
-            llm: QwenMLXService(),
+            llm: AppleFoundationModelService(),
             visionLanguageService: FastVLMVisionService()
         )
     )
@@ -100,7 +100,7 @@ struct MainView: View {
 
                 progressView(
                     title: "Building your declutter plan...",
-                    message: "The on-device model is preparing Delete and Organize recommendations."
+                    message: "Apple Foundation Models on Private Cloud Compute are preparing Delete and Organize recommendations."
                 )
 
             } else if isExecuting {
