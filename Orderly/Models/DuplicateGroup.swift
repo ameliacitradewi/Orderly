@@ -15,6 +15,7 @@ nonisolated enum DuplicateDetectionMethod: String, Codable, Hashable, Sendable {
     case exactHash
     case byteComparison
     case pccContent
+    case pccVisualContent
 }
 
 nonisolated struct DuplicateScan: Sendable {
