@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-enum QwenInferencePurpose: String, CaseIterable, Sendable, Hashable {
+enum FoundationInferencePurpose: String, CaseIterable, Sendable, Hashable {
     case agentDecision
     case documentSemantic
     case imageStructuring
@@ -47,33 +47,30 @@ struct LocalModelRuntimeStat: Sendable, Equatable {
 }
 
 struct LocalModelRuntimeSnapshot: Sendable, Equatable {
-    let qwen: LocalModelRuntimeStat
-    let qwenByPurpose: [QwenInferencePurpose: LocalInferencePurposeStat]
+    let foundationModel: LocalModelRuntimeStat
+    let foundationByPurpose: [FoundationInferencePurpose: LocalInferencePurposeStat]
     let fastVLM: LocalModelRuntimeStat
 
     func debugSummary() -> String {
-        let purposeSummary = QwenInferencePurpose.allCases.map { purpose in
-            let stat = qwenByPurpose[purpose] ?? LocalInferencePurposeStat(
+        let purposeSummary = FoundationInferencePurpose.allCases.map { purpose in
+            let stat = foundationByPurpose[purpose] ?? LocalInferencePurposeStat(
                 inferenceCount: 0,
                 totalInferenceSeconds: 0,
                 totalPromptCharacters: 0,
                 totalOutputCharacters: 0
             )
-            return "Qwen purpose.\(purpose.rawValue) inferences=\(stat.inferenceCount) totalSeconds=\(Self.number(stat.totalInferenceSeconds)) averageSeconds=\(Self.number(stat.averageInferenceSeconds)) promptCharacters=\(stat.totalPromptCharacters) outputCharacters=\(stat.totalOutputCharacters)"
+            return "FoundationModel purpose.\(purpose.rawValue) inferences=\(stat.inferenceCount) totalSeconds=\(Self.number(stat.totalInferenceSeconds)) averageSeconds=\(Self.number(stat.averageInferenceSeconds)) promptCharacters=\(stat.totalPromptCharacters) outputCharacters=\(stat.totalOutputCharacters)"
         }.joined(separator: "\n")
 
         return """
-        Qwen model=\(qwen.modelName)
-        Qwen loads=\(qwen.loadCount)
-        Qwen loadSeconds=\(Self.number(qwen.totalLoadSeconds))
-        Qwen inferences=\(qwen.inferenceCount)
-        Qwen totalInferenceSeconds=\(Self.number(qwen.totalInferenceSeconds))
-        Qwen averageInferenceSeconds=\(Self.number(qwen.averageInferenceSeconds))
-        Qwen totalPromptCharacters=\(qwen.totalPromptCharacters)
-        Qwen averagePromptCharacters=\(Self.number(qwen.averagePromptCharacters))
-        Qwen totalOutputCharacters=\(qwen.totalOutputCharacters)
-        Qwen averageOutputCharacters=\(Self.number(qwen.averageOutputCharacters))
-        Qwen residentBytesAfterLoad=\(Self.bytes(qwen.residentBytesAfterLoad))
+        FoundationModel model=\(foundationModel.modelName)
+        FoundationModel inferences=\(foundationModel.inferenceCount)
+        FoundationModel totalInferenceSeconds=\(Self.number(foundationModel.totalInferenceSeconds))
+        FoundationModel averageInferenceSeconds=\(Self.number(foundationModel.averageInferenceSeconds))
+        FoundationModel totalPromptCharacters=\(foundationModel.totalPromptCharacters)
+        FoundationModel averagePromptCharacters=\(Self.number(foundationModel.averagePromptCharacters))
+        FoundationModel totalOutputCharacters=\(foundationModel.totalOutputCharacters)
+        FoundationModel averageOutputCharacters=\(Self.number(foundationModel.averageOutputCharacters))
         \(purposeSummary)
         FastVLM model=\(fastVLM.modelName)
         FastVLM loads=\(fastVLM.loadCount)
@@ -120,31 +117,29 @@ actor LocalModelRuntimeMetrics {
         var totalOutputCharacters = 0
     }
 
-    private var qwen = MutableStat(modelName: QwenModelManager.modelName)
-    private var qwenByPurpose: [QwenInferencePurpose: MutablePurposeStat] = [:]
-    private var fastVLM = MutableStat(modelName: FastVLMModelManager.modelName)
+    private var foundationModel = MutableStat(
+        modelName: AppleFoundationModelService.modelName
+    )
+    private var foundationByPurpose: [
+        FoundationInferencePurpose: MutablePurposeStat
+    ] = [:]
+    private var fastVLM = MutableStat(
+        modelName: FastVLMModelManager.modelName
+    )
 
     func reset() {
-        qwen = MutableStat(modelName: QwenModelManager.modelName)
-        qwenByPurpose = [:]
-        fastVLM = MutableStat(modelName: FastVLMModelManager.modelName)
+        foundationModel = MutableStat(
+            modelName: AppleFoundationModelService.modelName
+        )
+        foundationByPurpose = [:]
+        fastVLM = MutableStat(
+            modelName: FastVLMModelManager.modelName
+        )
     }
 
-    func recordQwenLoad(seconds: Double, residentBytes: UInt64?) {
-        qwen.loadCount += 1
-        qwen.totalLoadSeconds += max(0, seconds)
-        qwen.residentBytesAfterLoad = residentBytes
-    }
-
-    func recordFastVLMLoad(seconds: Double, residentBytes: UInt64?) {
-        fastVLM.loadCount += 1
-        fastVLM.totalLoadSeconds += max(0, seconds)
-        fastVLM.residentBytesAfterLoad = residentBytes
-    }
-
-    func recordQwenInference(
+    func recordFoundationInference(
         seconds: Double,
-        purpose: QwenInferencePurpose = .agentDecision,
+        purpose: FoundationInferencePurpose = .agentDecision,
         promptCharacters: Int = 0,
         outputCharacters: Int = 0
     ) {
@@ -152,17 +147,26 @@ actor LocalModelRuntimeMetrics {
         let boundedPrompt = max(0, promptCharacters)
         let boundedOutput = max(0, outputCharacters)
 
-        qwen.inferenceCount += 1
-        qwen.totalInferenceSeconds += boundedSeconds
-        qwen.totalPromptCharacters += boundedPrompt
-        qwen.totalOutputCharacters += boundedOutput
+        foundationModel.inferenceCount += 1
+        foundationModel.totalInferenceSeconds += boundedSeconds
+        foundationModel.totalPromptCharacters += boundedPrompt
+        foundationModel.totalOutputCharacters += boundedOutput
 
-        var purposeStat = qwenByPurpose[purpose] ?? MutablePurposeStat()
+        var purposeStat = foundationByPurpose[purpose] ?? MutablePurposeStat()
         purposeStat.inferenceCount += 1
         purposeStat.totalInferenceSeconds += boundedSeconds
         purposeStat.totalPromptCharacters += boundedPrompt
         purposeStat.totalOutputCharacters += boundedOutput
-        qwenByPurpose[purpose] = purposeStat
+        foundationByPurpose[purpose] = purposeStat
+    }
+
+    func recordFastVLMLoad(
+        seconds: Double,
+        residentBytes: UInt64?
+    ) {
+        fastVLM.loadCount += 1
+        fastVLM.totalLoadSeconds += max(0, seconds)
+        fastVLM.residentBytesAfterLoad = residentBytes
     }
 
     func recordFastVLMInference(
@@ -178,13 +182,17 @@ actor LocalModelRuntimeMetrics {
 
     func snapshot() -> LocalModelRuntimeSnapshot {
         LocalModelRuntimeSnapshot(
-            qwen: Self.snapshot(qwen),
-            qwenByPurpose: qwenByPurpose.mapValues { Self.snapshot($0) },
+            foundationModel: Self.snapshot(foundationModel),
+            foundationByPurpose: foundationByPurpose.mapValues {
+                Self.snapshot($0)
+            },
             fastVLM: Self.snapshot(fastVLM)
         )
     }
 
-    private static func snapshot(_ stat: MutableStat) -> LocalModelRuntimeStat {
+    private static func snapshot(
+        _ stat: MutableStat
+    ) -> LocalModelRuntimeStat {
         LocalModelRuntimeStat(
             modelName: stat.modelName,
             loadCount: stat.loadCount,
@@ -197,7 +205,9 @@ actor LocalModelRuntimeMetrics {
         )
     }
 
-    private static func snapshot(_ stat: MutablePurposeStat) -> LocalInferencePurposeStat {
+    private static func snapshot(
+        _ stat: MutablePurposeStat
+    ) -> LocalInferencePurposeStat {
         LocalInferencePurposeStat(
             inferenceCount: stat.inferenceCount,
             totalInferenceSeconds: stat.totalInferenceSeconds,
