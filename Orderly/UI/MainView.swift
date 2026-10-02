@@ -32,15 +32,7 @@ struct MainView: View {
 
     private let securityAccess = SecurityScopedAccess()
     private let bookmarkStore = BookmarkStore()
-    private let analysisEngine = AnalysisEngine()
-    private let evidenceEngine = EvidenceEngine()
-    private let agent = ResilientAgentCoordinator(
-        agent: OrderlyAgent(
-            llm: AppleFoundationModelService(),
-            visionLanguageService: AppleFoundationVisionService()
-        )
-    )
-    private let agentPlanAdapter = AgentPlanAdapter()
+    private let pccFullPipeline = PCCFullPipeline()
     private let cleanupPlanner = CleanupPlanner()
     private let executionEngine = ExecutionEngine()
 
@@ -93,7 +85,7 @@ struct MainView: View {
 
                 progressView(
                     title: "Analyzing files...",
-                    message: "Orderly is tagging extensions and checking files for SHA256 duplicates."
+                    message: "Private Cloud Compute is reading file content, classifying files, and searching the folder for duplicates."
                 )
 
             } else if isAIAnalyzing {
@@ -279,122 +271,60 @@ struct MainView: View {
                     isAnalyzing = true
                 }
 
-                let result = try await analysisEngine.analyze(
-                    folder: url,
-                    files: scannedFiles
-                )
-
-                try Task.checkCancellation()
-                files = result.files
-
-                let evidence = evidenceEngine.buildEvidence(
-                    candidates: result.candidates,
-                    files: result.files,
-                    duplicateGroups: result.duplicateGroups,
-                    rootFolder: url
-                )
-
-                print("======== ANALYSIS ========")
-                print("Duplicate groups:", result.duplicateGroups.count)
-                print("Candidates:", result.candidates.count)
-
-                for candidate in result.candidates {
-                    print(
-                        "Candidate:",
-                        candidate.id,
-                        candidate.type.rawValue,
-                        candidate.fileIDs.count,
-                        candidate.confidence
-                    )
-                }
-
                 await MainActor.run {
-
-                    analysisResult = result
                     isAnalyzing = false
                     isAIAnalyzing = true
                 }
 
-                do {
+                let pipelineResult = try await pccFullPipeline.run(
+                    folder: url,
+                    files: scannedFiles
+                )
+                try Task.checkCancellation()
 
-                    let agentState = try await agent.run(
-                        analysis: result,
-                        evidence: evidence
+                let result = pipelineResult.analysis
+                let modelPlan = pipelineResult.modelPlan
+                files = result.files
+                analysisResult = result
+
+                print("======== PCC FULL ANALYSIS ========")
+                print("Duplicate groups:", result.duplicateGroups.count)
+                print("Candidates:", result.candidates.count)
+                print("Summary:", modelPlan.summary)
+
+                for recommendation in modelPlan.recommendations {
+                    print(
+                        "Recommendation:",
+                        recommendation.candidateID,
+                        recommendation.title
                     )
-                    let evaluation = AgentEvaluator().evaluate(
-                        state: agentState,
-                        analysis: result
-                    )
-
-                    print("======== PRODUCTION AGENT EVALUATION ========")
-                    print(evaluation.debugSummary())
-                    if !agentState.candidateFailures.isEmpty {
-                        print("======== ISOLATED CANDIDATE FAILURES ========")
-                        for failure in agentState.candidateFailures {
-                            print(
-                                failure.candidateID.uuidString,
-                                "|",
-                                failure.errorType,
-                                "|",
-                                failure.message
-                            )
-                        }
-                    }
-
-                    let modelPlan = agentPlanAdapter.makeModelPlan(
-                        state: agentState,
-                        analysis: result
-                    )
-
-                    print("======== MODEL PLAN ========")
-                    print("Summary:", modelPlan.summary)
-                    print("Recommendations:", modelPlan.recommendations.count)
-
-                    for recommendation in modelPlan.recommendations {
+                    for decision in recommendation.fileDecisions {
                         print(
-                            "Recommendation:",
-                            recommendation.candidateID,
-                            recommendation.title
-                        )
-
-                        for decision in recommendation.fileDecisions {
-                            print(
-                                "   ",
-                                decision.fileReference,
-                                "→",
-                                decision.disposition.rawValue,
-                                "|",
-                                decision.reason
-                            )
-                        }
-                    }
-
-                    try Task.checkCancellation()
-                    let plan = cleanupPlanner.createPlan(
-                        folder: url,
-                        files: result.files,
-                        analysis: result,
-                        modelPlan: modelPlan
-                    )
-
-                    print("======== CLEANUP PLAN ========")
-                    print("Actions:", plan.actions.count)
-
-                    for action in plan.actions {
-                        print(
-                            "Action:",
-                            action.type.rawValue,
-                            action.title,
-                            action.fileIDs.count
+                            "   ",
+                            decision.fileReference,
+                            "→",
+                            decision.disposition.rawValue,
+                            "|",
+                            decision.reason
                         )
                     }
+                }
 
-                    await MainActor.run {
+                let plan = cleanupPlanner.createPlan(
+                    folder: url,
+                    files: result.files,
+                    analysis: result,
+                    modelPlan: modelPlan
+                )
 
-                        modelCleanupPlan = modelPlan
-                        cleanupPlan = plan
-                        isAIAnalyzing = false
-                    }
+                print("======== CLEANUP PLAN ========")
+                print("Actions:", plan.actions.count)
+
+                await MainActor.run {
+                    modelCleanupPlan = modelPlan
+                    cleanupPlan = plan
+                    isAIAnalyzing = false
+                }
 
                 } catch is CancellationError {
                     return
