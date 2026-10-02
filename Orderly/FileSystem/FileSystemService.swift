@@ -5,8 +5,9 @@ actor FileSystemService {
     ///
     /// The allpcc branch intentionally does not collect file size, dates, UTI,
     /// extended attributes, hashes, or other local metadata for AI analysis.
-    /// Local code keeps only the URL/UUID mapping required for sandbox access,
-    /// user review, and the final approved filesystem operation.
+    /// Local code keeps the URL/UUID mapping plus path-derived display/routing
+    /// fields (filename and extension) required by the existing UI and attachment
+    /// transport. Those fields are not supplied to PCC as semantic evidence.
     func scanDirectory(at directoryURL: URL) throws -> [FileMetadata] {
         guard let enumerator = FileManager.default.enumerator(
             at: directoryURL,
