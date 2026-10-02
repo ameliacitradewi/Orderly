@@ -32,7 +32,7 @@ struct MainView: View {
 
     private let securityAccess = SecurityScopedAccess()
     private let bookmarkStore = BookmarkStore()
-    private let pccFullPipeline = PCCFullPipeline()
+    private let allPCCPipeline = PCCFullPipeline()
     private let cleanupPlanner = CleanupPlanner()
     private let executionEngine = ExecutionEngine()
 
@@ -85,14 +85,14 @@ struct MainView: View {
 
                 progressView(
                     title: "Analyzing files...",
-                    message: "Private Cloud Compute is reading file content, classifying files, and searching the folder for duplicates."
+                    message: "Private Cloud Compute is inspecting file content, reasoning about duplicates, and classifying what should be organized."
                 )
 
             } else if isAIAnalyzing {
 
                 progressView(
                     title: "Building your declutter plan...",
-                    message: "Apple Foundation Models on Private Cloud Compute are preparing Delete and Organize recommendations."
+                    message: "Private Cloud Compute is building Delete and Organize recommendations for your review."
                 )
 
             } else if isExecuting {
@@ -265,7 +265,7 @@ struct MainView: View {
                     isAIAnalyzing = true
                 }
 
-                let pipelineResult = try await pccFullPipeline.run(
+                let pipelineResult = try await allPCCPipeline.run(
                     folder: url,
                     files: scannedFiles
                 )
@@ -274,7 +274,7 @@ struct MainView: View {
                 let result = pipelineResult.analysis
                 let modelPlan = pipelineResult.modelPlan
 
-                print("======== PCC FULL ANALYSIS ========")
+                print("======== ALL PCC ANALYSIS ========")
                 print("Duplicate groups:", result.duplicateGroups.count)
                 print("Candidates:", result.candidates.count)
                 print("Summary:", modelPlan.summary)
@@ -317,7 +317,7 @@ struct MainView: View {
             } catch is CancellationError {
                 return
             } catch {
-                print("======== PCC FULL PIPELINE FAILED ========")
+                print("======== ALL PCC PIPELINE FAILED ========")
                 print(String(reflecting: error))
                 print(error.localizedDescription)
 
