@@ -75,7 +75,7 @@ struct DocumentComparisonTool {
         print("shingleSimilarity=", Self.number(deterministic.shingleSimilarity))
         print("lengthDifference=", Self.number(deterministic.lengthDifference))
         print("comparedCharacters=", deterministic.comparedCharacterCount)
-        print("======== QWEN SEMANTIC ASSESSMENT ========")
+        print("======== FOUNDATION MODEL SEMANTIC ASSESSMENT ========")
         print("relationship=", semantic.relationship.rawValue)
         print("confidence=", Self.number(semantic.confidence))
         print("summary=", semantic.summary)
