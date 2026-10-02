@@ -18,7 +18,7 @@ struct OrderlyApp: App {
             ] == "1" {
                 MixedModalityBenchmarkView()
             } else if ProcessInfo.processInfo.environment[
-                "ORDERLY_QWEN_IMAGE_AGENT_SMOKE"
+                "ORDERLY_PCC_IMAGE_AGENT_SMOKE"
             ] == "1" {
                 HybridImageAgentSmokeView()
             } else if ProcessInfo.processInfo.environment[
@@ -26,9 +26,9 @@ struct OrderlyApp: App {
             ] == "1" {
                 FastVLMImageSmokeView()
             } else if ProcessInfo.processInfo.environment[
-                "ORDERLY_QWEN_DOCUMENT_SMOKE"
+                "ORDERLY_PCC_SMOKE"
             ] == "1" {
-                QwenDocumentSmokeView()
+                PCCSmokeView()
             } else {
                 MainView()
             }
@@ -200,7 +200,7 @@ private struct FastVLMImageSmokeView: View {
     }
 }
 
-private struct QwenDocumentSmokeView: View {
+private struct PCCSmokeView: View {
     @State private var status: SmokeStatus = .running
 
     var body: some View {
@@ -208,9 +208,9 @@ private struct QwenDocumentSmokeView: View {
             switch status {
             case .running:
                 ProgressView()
-                Text("Running real Qwen document smoke test…")
+                Text("Running PCC Foundation Model smoke test…")
                     .font(.headline)
-                Text("Normal Orderly analysis is disabled for this debug run so the on-device model is exercised by only one agent at a time.")
+                Text("Normal Orderly analysis is disabled while this verifies a direct Private Cloud Compute Foundation Model request.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
@@ -218,9 +218,9 @@ private struct QwenDocumentSmokeView: View {
             case .passed:
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 34))
-                Text("Real Qwen document smoke test passed")
+                Text("PCC Foundation Model smoke test passed")
                     .font(.headline)
-                Text("See the Xcode console for the full agent trace.")
+                Text("See the Xcode console for the PCC request and response.")
                     .foregroundStyle(.secondary)
 
             case .failed(let message):
@@ -238,10 +238,10 @@ private struct QwenDocumentSmokeView: View {
         .frame(minWidth: 680, minHeight: 420)
         .task {
             do {
-                try await QwenSmokeTest.runDocumentComparison()
+                _ = try await PCCSmokeTest.run()
                 status = .passed
             } catch {
-                print("======== REAL QWEN DOCUMENT SMOKE FAILED ========")
+                print("======== PCC FOUNDATION MODEL SMOKE FAILED ========")
                 print(String(reflecting: error))
                 print(error.localizedDescription)
                 status = .failed(error.localizedDescription)
