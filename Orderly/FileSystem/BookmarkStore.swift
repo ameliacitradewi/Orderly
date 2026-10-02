@@ -22,32 +22,5 @@ final class BookmarkStore {
         )
     }
 
-    func resolveBookmark() throws -> URL? {
-        guard let bookmarkData = UserDefaults.standard.data(
-            forKey: bookmarkKey
-        ) else {
-            return nil
-        }
 
-        var isStale = false
-
-        let url = try URL(
-            resolvingBookmarkData: bookmarkData,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-
-        if isStale {
-            try saveBookmark(for: url)
-        }
-
-        return url
-    }
-
-    func removeBookmark() {
-        UserDefaults.standard.removeObject(
-            forKey: bookmarkKey
-        )
-    }
 }
