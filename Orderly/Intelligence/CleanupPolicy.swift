@@ -52,19 +52,17 @@ nonisolated struct CleanupPolicy: Sendable {
 
     static func explanation(for file: FileMetadata, files: FileLookup) -> String {
         if file.duplicateGroupID != nil {
-            guard let keeperID = file.duplicateKeeperID, let keeper = files.file(withID: keeperID) else {
-                return "Private Cloud Compute identified matching content, but a Last Modified date is missing. Keep all copies for review."
+            guard let keeperID = file.duplicateKeeperID,
+                  let keeper = files.file(withID: keeperID) else {
+                return "Private Cloud Compute identified matching content, but no canonical keeper was returned. Keep all copies for review."
             }
-            let date = keeper.modifiedAt?.formatted(.iso8601) ?? "unknown"
             if file.fileType == .image {
                 return "Private Cloud Compute identified \(file.duplicateCopyCount) copies of the same underlying visual image. "
-                    + "Keep \(keeper.name) (\(keeper.url.path)), which was selected as the highest-resolution copy. "
-                    + "If pixel resolution ties, Orderly prefers the larger encoded source, then the newer modification date, then alphabetical path order. "
-                    + "Keeper Last Modified: \(date). Delete the remaining copies to macOS Trash."
+                    + "Keep \(keeper.name), which PCC selected from the image content as the canonical copy. "
+                    + "Delete the remaining copies to macOS Trash only after user approval."
             }
             return "Private Cloud Compute identified \(file.duplicateCopyCount) copies of the same underlying content. "
-                + "Keep \(keeper.name) (\(keeper.url.path)), Last Modified: \(date). Delete the remaining copies to macOS Trash. "
-                + "Equal dates use alphabetical path order."
+                + "Keep \(keeper.name), which PCC selected as the canonical copy, and move the remaining copies to macOS Trash only after user approval."
         }
         if isSafeArtifact(file) {
             return "These Finder or thumbnail cache files can be regenerated. Delete moves them to macOS Trash."
