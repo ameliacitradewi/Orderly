@@ -1,8 +1,8 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-// Test the same non-UI sources used by the Xcode app, without requiring Apple Intelligence
-// to generate responses. The app's macOS 26.5 deployment target is preserved.
+// Test the same non-UI sources used by the Xcode app.
+// The package target matches the app's macOS 27 deployment requirement for PCC.
 let package = Package(
     name: "OrderlyCore",
     platforms: [.macOS("27.0")],
