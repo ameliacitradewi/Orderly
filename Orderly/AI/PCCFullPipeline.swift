@@ -41,7 +41,7 @@ private struct PCCGeneratedDuplicateBatch: Sendable {
 }
 
 @Generable
-private enum PCCGeneratedImageDuplicateRelationship: String, Sendable {
+private enum PCCGeneratedImageDuplicateRelationship: String, Sendable, Equatable {
     case sameUnderlyingImage
     case differentImage
     case uncertain
@@ -524,10 +524,22 @@ final class PCCFullPipeline {
 
                 let left = files[leftIndex]
                 let right = files[rightIndex]
-                let assessment = try await compareVisualIdentity(
-                    left,
-                    right
-                )
+
+                let assessment: PCCGeneratedImageDuplicateAssessment
+                do {
+                    assessment = try await compareVisualIdentity(
+                        left,
+                        right
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    print("======== PCC IMAGE DUPLICATE COMPARISON FAILED ========")
+                    print("A:", left.name)
+                    print("B:", right.name)
+                    print(String(reflecting: error))
+                    continue
+                }
 
                 print("======== PCC IMAGE DUPLICATE COMPARISON ========")
                 print("A:", left.name)
