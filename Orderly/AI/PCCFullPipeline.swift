@@ -126,13 +126,10 @@ final class PCCFullPipeline {
             let analysis = AnalysisResult(
                 analyzedFolder: folder,
                 totalFiles: 0,
-                totalSize: 0,
-                fileTypes: [],
                 duplicateGroups: [],
                 candidates: [],
                 analyzedAt: Date(),
-                files: [],
-                unreadableHashCount: 0
+                files: []
             )
             return PCCFullPipelineResult(
                 analysis: analysis,
@@ -189,14 +186,10 @@ final class PCCFullPipeline {
         let analysis = AnalysisResult(
             analyzedFolder: folder,
             totalFiles: files.count,
-            totalSize: 0,
-            fileTypes: summarize(files: classified),
             duplicateGroups: duplicateResult.groups,
             candidates: candidates,
             analyzedAt: Date(),
-            files: classified,
-            // allpcc intentionally performs no local hashing or metadata scan.
-            unreadableHashCount: 0
+            files: classified
         )
 
         let modelPlan = try await buildPlan(
@@ -951,23 +944,6 @@ final class PCCFullPipeline {
         }
     }
 
-    private func summarize(
-        files: [FileMetadata]
-    ) -> [FileTypeSummary] {
-        Dictionary(grouping: files, by: \.fileType)
-            .map { type, grouped in
-                FileTypeSummary(
-                    type: type,
-                    count: grouped.count,
-                    totalSize: grouped.reduce(0) { $0 + $1.size }
-                )
-            }
-            .sorted {
-                $0.count == $1.count
-                    ? $0.type.rawValue < $1.type.rawValue
-                    : $0.count > $1.count
-            }
-    }
 
     private static func isImage(_ file: FileMetadata) -> Bool {
         if let uti = file.uti,
