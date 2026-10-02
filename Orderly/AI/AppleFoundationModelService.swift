@@ -70,3 +70,51 @@ enum AppleFoundationModelServiceError: LocalizedError {
         }
     }
 }
+
+
+/// Multimodal adapter for image understanding on macOS 27.
+///
+/// This uses the same Apple Foundation Model on Private Cloud Compute as the
+/// text agent, but includes the selected image as a Foundation Models
+/// `Attachment`. Keeping image understanding in Foundation Models avoids the
+/// separate MLX/Metal runtime in Orderly's production path.
+final class AppleFoundationVisionService: VisionLanguageService {
+    private let reasoningLevel: ContextOptions.ReasoningLevel
+
+    init(reasoningLevel: ContextOptions.ReasoningLevel = .light) {
+        self.reasoningLevel = reasoningLevel
+    }
+
+    func generate(
+        prompt: String,
+        imageURL: URL
+    ) async throws -> String {
+        try Task.checkCancellation()
+
+        let model = PrivateCloudComputeLanguageModel()
+        guard model.isAvailable else {
+            throw AppleFoundationModelServiceError.privateCloudComputeUnavailable
+        }
+
+        let session = LanguageModelSession(model: model)
+        let startedAt = Date()
+
+        let response = try await session.respond(
+            options: GenerationOptions(sampling: .greedy),
+            contextOptions: ContextOptions(reasoningLevel: reasoningLevel)
+        ) {
+            prompt
+            Attachment(imageURL: imageURL)
+        }
+
+        let content = response.content
+        await LocalModelRuntimeMetrics.shared.recordFoundationInference(
+            seconds: Date().timeIntervalSince(startedAt),
+            purpose: .imageStructuring,
+            promptCharacters: prompt.count,
+            outputCharacters: content.count
+        )
+
+        return content
+    }
+}
