@@ -16,7 +16,7 @@ enum MixedModalityBenchmarkSmoke {
         case missingVerifiedDuplicateComparison
         case missingDocumentComparison
         case missingImageComparison
-        case missingFastVLMInference
+        case missingFoundationMultimodalInference
 
         var errorDescription: String? {
             switch self {
@@ -50,8 +50,8 @@ enum MixedModalityBenchmarkSmoke {
                 return "The benchmark did not produce semantic document comparison evidence."
             case .missingImageComparison:
                 return "The benchmark did not produce semantic image comparison evidence."
-            case .missingFastVLMInference:
-                return "The benchmark image candidate completed without exercising FastVLM inference."
+            case .missingFoundationMultimodalInference:
+                return "The benchmark image candidate completed without exercising Foundation Models multimodal inference."
             }
         }
     }
@@ -287,8 +287,8 @@ enum MixedModalityBenchmarkSmoke {
         }) else {
             throw BenchmarkError.missingImageComparison
         }
-        guard modelRuntime.fastVLM.inferenceCount > 0 else {
-            throw BenchmarkError.missingFastVLMInference
+        guard (modelRuntime.foundationByPurpose[.imageStructuring]?.inferenceCount ?? 0) > 0 else {
+            throw BenchmarkError.missingFoundationMultimodalInference
         }
 
         print("======== MIXED MODALITY QUALITY REPORT ========")
