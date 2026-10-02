@@ -559,6 +559,13 @@ actor ExecutionEngine {
         for file: FileMetadata,
         source: URL
     ) -> String? {
+        // allpcc intentionally does not create a local size/mtime snapshot during
+        // analysis. For those synthetic records, execution relies on the live
+        // existence/path checks already performed immediately before mutation.
+        if file.size == 0 && file.modifiedAt == nil {
+            return nil
+        }
+
         do {
             if file.isDirectory {
                 let current = try PackageContents.snapshot(at: source)
