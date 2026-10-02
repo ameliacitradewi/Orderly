@@ -23,7 +23,4 @@ nonisolated struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
         classification ?? ExtensionCatalog.category(for: ExtensionCatalog.key(for: name)) ?? .other
     }
 
-    var tags: [String] {
-        [fileType.tagName] + (duplicateGroupID == nil ? [] : ["PCC Content Duplicate"])
-    }
 }
