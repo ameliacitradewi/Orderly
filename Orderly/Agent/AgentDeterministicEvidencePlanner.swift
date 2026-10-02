@@ -149,7 +149,7 @@ struct AgentDeterministicEvidencePlanner {
         // If validation already proved that a semantic cross-file claim lacks the
         // required evidence, gathering that evidence is no longer an open-ended
         // planning choice. Run the minimum bounded recovery path directly instead of
-        // asking Qwen for a turn that AgentDecisionReferenceResolver would redirect.
+        // asking the Foundation Model for a turn that AgentDecisionReferenceResolver would redirect.
         guard let triggerIndex = candidateObservations.lastIndex(where: {
             $0.type == .error && Self.requiresSemanticRecovery($0.content)
         }) else {
