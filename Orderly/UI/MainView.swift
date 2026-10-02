@@ -13,9 +13,6 @@ struct MainView: View {
 
     @State private var isScanning = false
     @State private var scanTask: Task<Void, Never>?
-    @State private var isAnalyzing = false
-    @State private var analysisResult: AnalysisResult?
-    @State private var modelCleanupPlan: ModelCleanupPlan?
     @State private var cleanupPlan: CleanupPlan?
     @State private var isAIAnalyzing = false
     @State private var isExecuting = false
@@ -79,13 +76,6 @@ struct MainView: View {
                     folder: selectedFolder,
                     files: files,
                     progress: nil
-                )
-
-            } else if isAnalyzing {
-
-                progressView(
-                    title: "Analyzing files...",
-                    message: "Private Cloud Compute is inspecting file content, reasoning about duplicates, and classifying what should be organized."
                 )
 
             } else if isAIAnalyzing {
@@ -233,7 +223,6 @@ struct MainView: View {
     private func scanFolder(_ url: URL) {
 
         isScanning = true
-        isAnalyzing = false
         isAIAnalyzing = false
 
         scanTask?.cancel()
@@ -243,7 +232,6 @@ struct MainView: View {
                 await MainActor.run {
                     aiError = "Orderly could not access this folder."
                     isScanning = false
-                    isAnalyzing = false
                     isAIAnalyzing = false
                 }
                 return
@@ -261,7 +249,6 @@ struct MainView: View {
                 await MainActor.run {
                     files = scannedFiles
                     isScanning = false
-                    isAnalyzing = false
                     isAIAnalyzing = true
                 }
 
@@ -309,8 +296,6 @@ struct MainView: View {
 
                 await MainActor.run {
                     files = result.files
-                    analysisResult = result
-                    modelCleanupPlan = modelPlan
                     cleanupPlan = plan
                     isAIAnalyzing = false
                 }
@@ -391,8 +376,6 @@ struct MainView: View {
         selectedFolder = nil
         files = []
 
-        analysisResult = nil
-        modelCleanupPlan = nil
         cleanupPlan = nil
 
         executionResult = nil
