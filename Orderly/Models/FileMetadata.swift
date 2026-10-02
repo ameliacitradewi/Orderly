@@ -15,7 +15,7 @@ nonisolated struct FileMetadata: Identifiable, Codable, Hashable, Sendable {
 
     var classification: FileType? = nil
     var duplicateGroupID: UUID? = nil
-    var duplicateSHA256: String? = nil
+    var duplicateMarker: String? = nil
     var duplicateKeeperID: UUID? = nil
     var duplicateCopyCount: Int = 0
 
