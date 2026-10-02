@@ -162,7 +162,7 @@ enum MixedModalityBenchmarkSmoke {
 
         // This is a coverage/performance harness, not an autonomous tool-choice score.
         // The focused semantic candidates explicitly require their modality path so
-        // repeated benchmark runs measure the same Qwen/PDF/FastVLM workload instead
+        // repeated benchmark runs measure the same PCC Foundation Model/PDF/FastVLM workload instead
         // of sometimes stopping after metadata-only evidence.
         let documentCandidate = AnalysisCandidate(
             id: UUID(),
@@ -217,7 +217,7 @@ enum MixedModalityBenchmarkSmoke {
 
         let productionCoordinator = ResilientAgentCoordinator(
             agent: OrderlyAgent(
-                llm: QwenMLXService(),
+                llm: AppleFoundationModelService(),
                 visionLanguageService: FastVLMVisionService()
             )
         )
