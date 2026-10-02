@@ -90,7 +90,7 @@ enum ImageAgentSmokeTest {
         )
 
         let state = try await OrderlyAgent(
-            llm: QwenMLXService(),
+            llm: AppleFoundationModelService(),
             visionLanguageService: FastVLMVisionService()
         ).run(
             analysis: analysis,
