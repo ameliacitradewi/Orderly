@@ -22,13 +22,13 @@ nonisolated struct DeletionVerifier: Sendable {
         }
 
         if let group = file.duplicateGroupID {
-            guard let marker = file.duplicateSHA256,
+            guard let marker = file.duplicateMarker,
                   marker.hasPrefix("allpcc-"),
                   let keeperID = file.duplicateKeeperID,
                   keeperID != file.id,
                   let keeper = lookup.file(withID: keeperID),
                   keeper.duplicateGroupID == group,
-                  keeper.duplicateSHA256 == marker,
+                  keeper.duplicateMarker == marker,
                   keeper.duplicateKeeperID == keeper.id,
                   isInside(keeper.url, root: root),
                   FileManager.default.fileExists(atPath: keeper.url.path),
