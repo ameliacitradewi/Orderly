@@ -31,11 +31,11 @@ final class OrderlyAgent {
                 )
             }
             self.toolRouter = ToolRouter(
-                documentSemanticAnalyzer: QwenDocumentSemanticAnalyzer(llm: llm),
+                documentSemanticAnalyzer: FoundationDocumentSemanticAnalyzer(llm: llm),
                 imageSemanticAnalyzer: imageSemanticAnalyzer,
                 imagePairSemanticAnalyzer: imageSemanticAnalyzer == nil
                     ? nil
-                    : QwenImagePairSemanticAnalyzer(llm: llm)
+                    : FoundationImagePairSemanticAnalyzer(llm: llm)
             )
         }
     }
@@ -115,7 +115,7 @@ final class OrderlyAgent {
                 )
                 if issues.isEmpty {
                     print("======== AGENT DETERMINISTIC FINDING FAST PATH ========")
-                    print("Bypassed Qwen because trusted typed evidence and the cleanup allowlist fully determine this bounded finding.")
+                    print("Bypassed the Foundation Model because trusted typed evidence and the cleanup allowlist fully determine this bounded finding.")
                     Self.printFinding(deterministicFinding)
                     return deterministicFinding
                 }
@@ -135,7 +135,7 @@ final class OrderlyAgent {
                    observations: state.observations
                ) {
                 print("======== AGENT DETERMINISTIC EVIDENCE STEP ========")
-                print("Bypassed Qwen planner for mandatory bounded read-only evidence.")
+                print("Bypassed the Foundation Model planner for mandatory bounded read-only evidence.")
                 decision = deterministicDecision
             } else {
                 let prompt = contextBuilder.build(
