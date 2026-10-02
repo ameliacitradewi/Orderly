@@ -33,13 +33,13 @@ enum FastVLMSmokeTest {
         print("frames=", evidence.frameCount)
         print("contentType=", evidence.contentType)
 
-        // FastVLM is the visual perceiver. Qwen only receives FastVLM's bounded text
+        // FastVLM is the visual perceiver. The PCC Foundation Model only receives FastVLM's bounded text
         // description plus trusted raster metadata and converts that evidence into the
-        // typed schema used by Orderly. Qwen never receives the image path as a tool input
+        // typed schema used by Orderly. The PCC Foundation Model never receives the image path as a tool input
         // and neither model is allowed to choose a cleanup disposition here.
         let analyzer = StructuredImageSemanticAnalyzer(
             visionModel: FastVLMVisionService(),
-            textModel: QwenMLXService(),
+            textModel: AppleFoundationModelService(),
             debugRawResponse: true
         )
         let semantic = try await analyzer.analyze(
@@ -76,7 +76,7 @@ enum FastVLMSmokeTest {
 
         print("======== REAL FASTVLM IMAGE SMOKE PASS ========")
         print("Visual model:", FastVLMModelManager.modelName)
-        print("Structuring model:", QwenModelManager.modelName)
+        print("Structuring model:", AppleFoundationModelService.modelName)
         print("Content kind:", semantic.contentKind.rawValue)
         print("Confidence:", semantic.confidence)
         print("Summary:", semantic.summary)
