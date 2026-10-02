@@ -6,8 +6,9 @@ This branch starts from `pcc-full` and removes the local metadata-analysis pass.
 
 1. **Local macOS boundary**
    - obtains the user-selected security-scoped folder
-   - enumerates file URLs and assigns opaque UUIDs
+   - enumerates file URLs, assigns opaque UUIDs, and keeps path-derived filename/extension only for UI and content-transport routing
    - does **not** collect size, creation/modification/access dates, UTI, hashes, image dimensions, or feature vectors for AI reasoning
+   - filename/path-derived routing fields are not sent to PCC as semantic evidence
 
 2. **Private Cloud Compute**
    - profiles file content and assigns `FileType`
