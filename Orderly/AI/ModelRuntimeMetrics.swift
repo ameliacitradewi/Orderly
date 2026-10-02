@@ -49,7 +49,6 @@ struct LocalModelRuntimeStat: Sendable, Equatable {
 struct LocalModelRuntimeSnapshot: Sendable, Equatable {
     let foundationModel: LocalModelRuntimeStat
     let foundationByPurpose: [FoundationInferencePurpose: LocalInferencePurposeStat]
-    let fastVLM: LocalModelRuntimeStat
 
     func debugSummary() -> String {
         let purposeSummary = FoundationInferencePurpose.allCases.map { purpose in
@@ -72,27 +71,15 @@ struct LocalModelRuntimeSnapshot: Sendable, Equatable {
         FoundationModel totalOutputCharacters=\(foundationModel.totalOutputCharacters)
         FoundationModel averageOutputCharacters=\(Self.number(foundationModel.averageOutputCharacters))
         \(purposeSummary)
-        FastVLM model=\(fastVLM.modelName)
-        FastVLM loads=\(fastVLM.loadCount)
-        FastVLM loadSeconds=\(Self.number(fastVLM.totalLoadSeconds))
-        FastVLM inferences=\(fastVLM.inferenceCount)
-        FastVLM totalInferenceSeconds=\(Self.number(fastVLM.totalInferenceSeconds))
-        FastVLM averageInferenceSeconds=\(Self.number(fastVLM.averageInferenceSeconds))
-        FastVLM totalPromptCharacters=\(fastVLM.totalPromptCharacters)
-        FastVLM averagePromptCharacters=\(Self.number(fastVLM.averagePromptCharacters))
-        FastVLM totalOutputCharacters=\(fastVLM.totalOutputCharacters)
-        FastVLM averageOutputCharacters=\(Self.number(fastVLM.averageOutputCharacters))
-        FastVLM residentBytesAfterLoad=\(Self.bytes(fastVLM.residentBytesAfterLoad))
         """
     }
 
     private static func number(_ value: Double) -> String {
-        String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
-    }
-
-    private static func bytes(_ value: UInt64?) -> String {
-        guard let value else { return "unavailable" }
-        return String(value)
+        String(
+            format: "%.3f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
     }
 }
 
@@ -123,18 +110,12 @@ actor LocalModelRuntimeMetrics {
     private var foundationByPurpose: [
         FoundationInferencePurpose: MutablePurposeStat
     ] = [:]
-    private var fastVLM = MutableStat(
-        modelName: FastVLMModelManager.modelName
-    )
 
     func reset() {
         foundationModel = MutableStat(
             modelName: AppleFoundationModelService.modelName
         )
         foundationByPurpose = [:]
-        fastVLM = MutableStat(
-            modelName: FastVLMModelManager.modelName
-        )
     }
 
     func recordFoundationInference(
@@ -160,33 +141,12 @@ actor LocalModelRuntimeMetrics {
         foundationByPurpose[purpose] = purposeStat
     }
 
-    func recordFastVLMLoad(
-        seconds: Double,
-        residentBytes: UInt64?
-    ) {
-        fastVLM.loadCount += 1
-        fastVLM.totalLoadSeconds += max(0, seconds)
-        fastVLM.residentBytesAfterLoad = residentBytes
-    }
-
-    func recordFastVLMInference(
-        seconds: Double,
-        promptCharacters: Int = 0,
-        outputCharacters: Int = 0
-    ) {
-        fastVLM.inferenceCount += 1
-        fastVLM.totalInferenceSeconds += max(0, seconds)
-        fastVLM.totalPromptCharacters += max(0, promptCharacters)
-        fastVLM.totalOutputCharacters += max(0, outputCharacters)
-    }
-
     func snapshot() -> LocalModelRuntimeSnapshot {
         LocalModelRuntimeSnapshot(
             foundationModel: Self.snapshot(foundationModel),
             foundationByPurpose: foundationByPurpose.mapValues {
                 Self.snapshot($0)
-            },
-            fastVLM: Self.snapshot(fastVLM)
+            }
         )
     }
 
