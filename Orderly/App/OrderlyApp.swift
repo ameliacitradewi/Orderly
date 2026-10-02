@@ -108,7 +108,7 @@ private struct HybridImageAgentSmokeView: View {
                 ProgressView()
                 Text("Running real hybrid image-agent smoke test…")
                     .font(.headline)
-                Text("Normal Orderly analysis is disabled. Qwen will orchestrate bounded image tools using Apple Vision, FastVLM, and structured semantic comparison.")
+                Text("Normal Orderly analysis is disabled. The PCC Foundation Model will orchestrate bounded image tools using Apple Vision, FastVLM, and structured semantic comparison.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 520)
@@ -226,7 +226,7 @@ private struct PCCSmokeView: View {
             case .failed(let message):
                 Image(systemName: "xmark.octagon.fill")
                     .font(.system(size: 34))
-                Text("Real Qwen document smoke test failed")
+                Text("PCC Foundation Model smoke test failed")
                     .font(.headline)
                 Text(message)
                     .foregroundStyle(.secondary)
