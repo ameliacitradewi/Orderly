@@ -31,10 +31,10 @@ protocol ImageSemanticAnalyzing {
     ) async throws -> ImageSemanticObservation
 }
 
-/// Hybrid image semantic analysis:
-/// 1. the VLM performs visual perception and is asked for a tiny typed line protocol;
+/// Multimodal image semantic analysis:
+/// 1. the vision-capable model performs visual perception and is asked for a tiny typed line protocol;
 /// 2. if that response parses, use it directly without another text-model inference;
-/// 3. production fast-path mode can conservatively preserve non-empty VLM prose as an
+/// 3. production fast-path mode can conservatively preserve non-empty model prose as an
 ///    `uncertain`/explicitly named content kind instead of spending a Foundation Model structuring turn;
 /// 4. otherwise the optional text LLM remains a bounded compatibility fallback.
 ///
@@ -112,7 +112,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
         } else if preferVisionOnly,
                   let conservative = Self.conservativeVisionOnlyResponse(rawVisualDescription) {
             print("======== IMAGE SEMANTIC VISION-ONLY FAST PATH ========")
-            print("Used bounded FastVLM description without a Foundation Model structuring inference.")
+            print("Used bounded visual description without a Foundation Model structuring inference.")
             parsed = conservative
         } else {
             guard let textModel else {
@@ -267,7 +267,7 @@ final class StructuredImageSemanticAnalyzer: ImageSemanticAnalyzing {
         )
     }
 
-    /// FastVLM occasionally answers the requested schema as ordinary prose. In the
+    /// The vision model occasionally answers the requested schema as ordinary prose. In the
     /// production fast path we can still preserve that bounded visual description
     /// without another LLM call. Only explicit self-labels such as "screenshot" or
     /// "photo" are promoted to a content kind; otherwise the kind remains uncertain.
