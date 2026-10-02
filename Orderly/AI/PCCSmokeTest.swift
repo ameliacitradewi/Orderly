@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 
 enum PCCSmokeTest {
     static func run() async throws -> String {
