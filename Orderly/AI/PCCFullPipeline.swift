@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import FoundationModels
+import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 
@@ -37,6 +38,37 @@ private struct PCCGeneratedDuplicateDecision: Sendable {
 private struct PCCGeneratedDuplicateBatch: Sendable {
     @Guide(description: "Exactly one duplicate decision for every supplied reference.")
     let decisions: [PCCGeneratedDuplicateDecision]
+}
+
+@Generable
+private enum PCCGeneratedImageDuplicateRelationship: String, Sendable {
+    case sameUnderlyingImage
+    case differentImage
+    case uncertain
+}
+
+@Generable
+private struct PCCGeneratedImageDuplicateAssessment: Sendable {
+    let relationship: PCCGeneratedImageDuplicateRelationship
+
+    @Guide(description: "Confidence from 0 to 1 that the relationship is correct.")
+    let confidence: Double
+
+    @Guide(description: "One short visual reason. Do not use filenames, paths, timestamps, file size, or pixel dimensions as evidence that the visual content matches.")
+    let reason: String
+}
+
+private struct PCCImageResolution: Sendable {
+    let width: Int
+    let height: Int
+
+    var pixelCount: Int64 {
+        Int64(width) * Int64(height)
+    }
+
+    var longestEdge: Int {
+        max(width, height)
+    }
 }
 
 @Generable
@@ -84,7 +116,8 @@ private struct PCCProfile: Sendable {
 
 @MainActor
 final class PCCFullPipeline {
-    private static let duplicateConfidenceThreshold = 0.98
+    private static let contentDuplicateConfidenceThreshold = 0.98
+    private static let visualDuplicateConfidenceThreshold = 0.95
     private static let maxTextCharacters = 14_000
     private static let maxBinaryBytes = 6_144
     private static let candidateBatchSize = 4
@@ -326,13 +359,76 @@ final class PCCFullPipeline {
         files: [FileMetadata],
         profilesByID: [UUID: PCCProfile]
     ) async throws -> DuplicateScan {
-        let bySize = Dictionary(grouping: files, by: \.size)
         var groups: [DuplicateGroup] = []
-        var groupMembership: [UUID: (group: DuplicateGroup, marker: String)] = [:]
+        var groupMembership: [
+            UUID: (group: DuplicateGroup, marker: String)
+        ] = [:]
+
+        // Images are compared directly as image attachments in PCC. They are NOT
+        // bucketed by byte size, dimensions, aspect ratio, orientation, or file
+        // encoding. This intentionally lets a portrait/landscape rotation, a
+        // downscaled copy, or a recompressed copy resolve to the same visual source.
+        let imageFiles = files
+            .filter(Self.isImage)
+            .sorted { $0.url.path < $1.url.path }
+
+        let visualComponents = try await visualDuplicateComponents(
+            imageFiles
+        )
+
+        for component in visualComponents where component.count > 1 {
+            let members = component.compactMap { id in
+                imageFiles.first { $0.id == id }
+            }
+            guard members.count > 1 else { continue }
+
+            let keeper = Self.preferredImageKeeper(in: members)
+            let ordered = members.sorted { left, right in
+                if left.id == keeper.id { return true }
+                if right.id == keeper.id { return false }
+                return left.url.path < right.url.path
+            }
+
+            let groupID = UUID()
+            let marker = "pcc-visual:\(groupID.uuidString)"
+            let group = DuplicateGroup(
+                id: groupID,
+                files: ordered.map(\.id),
+                fileSize: keeper.size,
+                detectionMethod: .pccVisualContent,
+                sha256: marker,
+                keeperID: keeper.id
+            )
+            groups.append(group)
+
+            print("======== PCC VISUAL DUPLICATE GROUP ========")
+            print("keeper:", keeper.name)
+            if let resolution = Self.imageResolution(at: keeper.url) {
+                print(
+                    "keeperResolution:",
+                    "\(resolution.width)x\(resolution.height)",
+                    "pixels=\(resolution.pixelCount)"
+                )
+            }
+            for member in ordered where member.id != keeper.id {
+                print("duplicate:", member.name)
+            }
+
+            for member in ordered {
+                groupMembership[member.id] = (group, marker)
+            }
+        }
+
+        // Non-image files keep the content-profile duplicate pass. They may use
+        // byte-size as a cheap candidate bucket, but the duplicate conclusion is
+        // still made by PCC rather than a local hash.
+        let nonImages = files.filter { !Self.isImage($0) }
+        let bySize = Dictionary(grouping: nonImages, by: \.size)
 
         for size in bySize.keys.sorted() {
             try Task.checkCancellation()
-            let bucket = (bySize[size] ?? []).sorted { $0.url.path < $1.url.path }
+            let bucket = (bySize[size] ?? [])
+                .sorted { $0.url.path < $1.url.path }
             guard bucket.count > 1 else { continue }
 
             let profiles = bucket.compactMap { profilesByID[$0.id] }
@@ -345,11 +441,14 @@ final class PCCFullPipeline {
 
             var adjacency: [UUID: Set<UUID>] = [:]
             let byReference = Dictionary(
-                uniqueKeysWithValues: profiles.map { ($0.reference, $0.fileID) }
+                uniqueKeysWithValues: profiles.map {
+                    ($0.reference, $0.fileID)
+                }
             )
 
             for decision in decisions {
-                guard Self.clamp(decision.confidence) >= Self.duplicateConfidenceThreshold,
+                guard Self.clamp(decision.confidence)
+                        >= Self.contentDuplicateConfidenceThreshold,
                       decision.exactDuplicateOf.lowercased() != "none",
                       let sourceID = byReference[decision.reference],
                       let targetID = byReference[decision.exactDuplicateOf],
@@ -360,23 +459,12 @@ final class PCCFullPipeline {
                 adjacency[targetID, default: []].insert(sourceID)
             }
 
-            var visited: Set<UUID> = []
-            for file in bucket where !visited.contains(file.id) {
-                var component: [UUID] = []
-                var queue: [UUID] = [file.id]
-                visited.insert(file.id)
+            let components = Self.connectedComponents(
+                fileIDs: bucket.map(\.id),
+                adjacency: adjacency
+            )
 
-                while let current = queue.first {
-                    queue.removeFirst()
-                    component.append(current)
-                    for neighbor in adjacency[current] ?? []
-                        where !visited.contains(neighbor) {
-                        visited.insert(neighbor)
-                        queue.append(neighbor)
-                    }
-                }
-
-                guard component.count > 1 else { continue }
+            for component in components where component.count > 1 {
                 let members = bucket
                     .filter { component.contains($0.id) }
                     .sorted(by: DuplicateDetector.newestFirst)
@@ -418,6 +506,213 @@ final class PCCFullPipeline {
             files: tagged,
             groups: groups,
             unreadableCount: 0
+        )
+    }
+
+    private func visualDuplicateComponents(
+        _ files: [FileMetadata]
+    ) async throws -> [[UUID]] {
+        guard files.count > 1 else {
+            return files.map { [$0.id] }
+        }
+
+        var adjacency: [UUID: Set<UUID>] = [:]
+
+        for leftIndex in 0..<(files.count - 1) {
+            for rightIndex in (leftIndex + 1)..<files.count {
+                try Task.checkCancellation()
+
+                let left = files[leftIndex]
+                let right = files[rightIndex]
+                let assessment = try await compareVisualIdentity(
+                    left,
+                    right
+                )
+
+                print("======== PCC IMAGE DUPLICATE COMPARISON ========")
+                print("A:", left.name)
+                print("B:", right.name)
+                print("relationship:", assessment.relationship.rawValue)
+                print("confidence:", assessment.confidence)
+                print("reason:", assessment.reason)
+
+                guard assessment.relationship == .sameUnderlyingImage,
+                      Self.clamp(assessment.confidence)
+                        >= Self.visualDuplicateConfidenceThreshold else {
+                    continue
+                }
+
+                adjacency[left.id, default: []].insert(right.id)
+                adjacency[right.id, default: []].insert(left.id)
+            }
+        }
+
+        return Self.connectedComponents(
+            fileIDs: files.map(\.id),
+            adjacency: adjacency
+        )
+    }
+
+    private func compareVisualIdentity(
+        _ first: FileMetadata,
+        _ second: FileMetadata
+    ) async throws -> PCCGeneratedImageDuplicateAssessment {
+        let model = PrivateCloudComputeLanguageModel()
+        guard model.isAvailable else {
+            throw PCCFullPipelineError.privateCloudComputeUnavailable
+        }
+
+        let firstResolution = Self.imageResolution(at: first.url)
+        let secondResolution = Self.imageResolution(at: second.url)
+
+        let session = LanguageModelSession(
+            model: model,
+            instructions: """
+            You are the visual duplicate verifier for Orderly.
+            Compare the actual pixels/content of image-A and image-B.
+
+            sameUnderlyingImage means both attachments come from the same underlying
+            visual image even if one is:
+            - rotated or has different portrait/landscape orientation,
+            - resized or downscaled/upscaled,
+            - stored at a different pixel resolution,
+            - recompressed or encoded in a different image format,
+            - affected only by normal compression artifacts,
+            - surrounded by harmless padding/canvas that does not change the actual image content.
+
+            differentImage means the underlying visual content is materially different.
+            Images of the same subject, scene, person, UI, document, or event are NOT
+            duplicates when they are separate captures or contain meaningful edits,
+            crops that remove/add meaningful content, annotations, text changes, or
+            other substantive visual differences.
+
+            Pixel dimensions, aspect ratio, byte size, filename, path, and timestamps
+            must never be used as evidence against sameUnderlyingImage. Inspect the
+            two attached images themselves.
+
+            Use uncertain when the visual evidence is insufficient.
+            """
+        )
+
+        let response = try await session.respond(
+            generating: PCCGeneratedImageDuplicateAssessment.self,
+            options: GenerationOptions(sampling: .greedy),
+            contextOptions: ContextOptions(reasoningLevel: .deep)
+        ) {
+            """
+            Compare image-A with image-B for duplicate identity.
+
+            image-A local pixel metadata:
+            width=\(firstResolution?.width ?? 0)
+            height=\(firstResolution?.height ?? 0)
+
+            image-B local pixel metadata:
+            width=\(secondResolution?.width ?? 0)
+            height=\(secondResolution?.height ?? 0)
+
+            The pixel metadata is provided only so Orderly can later choose the
+            highest-resolution keeper. Do not use it to decide whether the visual
+            content matches.
+            """
+            Attachment(imageURL: first.url)
+                .label("image-A")
+            Attachment(imageURL: second.url)
+                .label("image-B")
+        }
+
+        return response.content
+    }
+
+    private static func connectedComponents(
+        fileIDs: [UUID],
+        adjacency: [UUID: Set<UUID>]
+    ) -> [[UUID]] {
+        var visited: Set<UUID> = []
+        var result: [[UUID]] = []
+
+        for fileID in fileIDs where !visited.contains(fileID) {
+            var component: [UUID] = []
+            var queue: [UUID] = [fileID]
+            visited.insert(fileID)
+
+            while let current = queue.first {
+                queue.removeFirst()
+                component.append(current)
+
+                for neighbor in adjacency[current] ?? []
+                    where !visited.contains(neighbor) {
+                    visited.insert(neighbor)
+                    queue.append(neighbor)
+                }
+            }
+
+            result.append(component)
+        }
+
+        return result
+    }
+
+    private static func preferredImageKeeper(
+        in files: [FileMetadata]
+    ) -> FileMetadata {
+        files.sorted { left, right in
+            let lhs = imageResolution(at: left.url)
+            let rhs = imageResolution(at: right.url)
+
+            let lhsPixels = lhs?.pixelCount ?? 0
+            let rhsPixels = rhs?.pixelCount ?? 0
+            if lhsPixels != rhsPixels {
+                return lhsPixels > rhsPixels
+            }
+
+            let lhsEdge = lhs?.longestEdge ?? 0
+            let rhsEdge = rhs?.longestEdge ?? 0
+            if lhsEdge != rhsEdge {
+                return lhsEdge > rhsEdge
+            }
+
+            // When two files have the same pixel dimensions, prefer the larger
+            // encoded source before falling back to date/path. This often retains
+            // the less-compressed version without making compression a duplicate test.
+            if left.size != right.size {
+                return left.size > right.size
+            }
+
+            let lhsDate = left.modifiedAt ?? .distantPast
+            let rhsDate = right.modifiedAt ?? .distantPast
+            if lhsDate != rhsDate {
+                return lhsDate > rhsDate
+            }
+
+            return left.url.standardizedFileURL.path
+                < right.url.standardizedFileURL.path
+        }.first!
+    }
+
+    private static func imageResolution(
+        at url: URL
+    ) -> PCCImageResolution? {
+        guard let source = CGImageSourceCreateWithURL(
+            url as CFURL,
+            nil
+        ),
+        let properties = CGImageSourceCopyPropertiesAtIndex(
+            source,
+            0,
+            nil
+        ) as? [CFString: Any],
+        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?
+            .intValue,
+        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?
+            .intValue,
+        width > 0,
+        height > 0 else {
+            return nil
+        }
+
+        return PCCImageResolution(
+            width: width,
+            height: height
         )
     }
 
@@ -604,7 +899,7 @@ final class PCCFullPipeline {
         }
 
         return ModelCleanupPlan(
-            summary: "Private Cloud Compute inspected \(analysis.totalFiles) files, identified \(analysis.duplicateGroups.count) exact-content duplicate groups, and produced \(recommendations.count) cleanup recommendations.",
+            summary: "Private Cloud Compute inspected \(analysis.totalFiles) files, identified \(analysis.duplicateGroups.count) duplicate groups, and produced \(recommendations.count) cleanup recommendations.",
             recommendations: recommendations
         )
     }
@@ -659,7 +954,7 @@ final class PCCFullPipeline {
             appendCandidateBatches(
                 members,
                 type: .duplicate,
-                reason: "Private Cloud Compute identified the files as exact-content duplicates.",
+                reason: "Private Cloud Compute identified the files as duplicates of the same underlying content.",
                 into: &candidates
             )
         }
