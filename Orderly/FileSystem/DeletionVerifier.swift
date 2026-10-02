@@ -13,18 +13,42 @@ nonisolated struct DeletionVerifier: Sendable {
             throw FileVerificationError.keeperUnavailable
         }
         if let group = file.duplicateGroupID {
-            guard let hash = file.duplicateSHA256,
+            guard let marker = file.duplicateSHA256,
                   let keeperID = file.duplicateKeeperID, keeperID != file.id,
                   let keeper = lookup.file(withID: keeperID), keeper.duplicateGroupID == group,
-                  keeper.duplicateSHA256 == hash, keeper.duplicateKeeperID == keeper.id,
-                  isInside(keeper.url, root: root) else { throw FileVerificationError.keeperUnavailable }
-            // Rehash both byte streams immediately before each deletion. Cached hashes
-            // alone are insufficient when a file changes while the user reviews the plan.
-            guard try DuplicateDetector.digest(at: keeper.url, matching: keeper) == hash,
-                  try DuplicateDetector.digest(at: file.url, matching: file) == hash else {
+                  keeper.duplicateSHA256 == marker, keeper.duplicateKeeperID == keeper.id,
+                  isInside(keeper.url, root: root) else {
+                throw FileVerificationError.keeperUnavailable
+            }
+
+            if marker.hasPrefix("allpcc-") {
+                // allpcc intentionally avoids local content hashing. Immediately
+                // before the approved mutation, revalidate only the authority
+                // boundary and that both PCC-referenced files still exist.
+                guard FileManager.default.fileExists(atPath: keeper.url.path),
+                      FileManager.default.fileExists(atPath: file.url.path) else {
+                    throw FileVerificationError.keeperUnavailable
+                }
+                return
+            }
+
+            // Legacy deterministic duplicate groups still use local digest
+            // verification when their marker is an actual digest.
+            guard try DuplicateDetector.digest(at: keeper.url, matching: keeper) == marker,
+                  try DuplicateDetector.digest(at: file.url, matching: file) == marker else {
                 throw FileVerificationError.keeperUnavailable
             }
         } else {
+            if file.size == 0 && file.modifiedAt == nil {
+                // Synthetic allpcc file records deliberately have no local
+                // metadata snapshot. User approval plus live path/existence checks
+                // are the final execution boundary for these records.
+                guard FileManager.default.fileExists(atPath: file.url.path) else {
+                    throw FileVerificationError.changed
+                }
+                return
+            }
+
             let snapshot = try FileSnapshot.read(at: file.url)
             guard snapshot.size == file.size, snapshot.modifiedAt == file.modifiedAt else {
                 throw FileVerificationError.changed
