@@ -263,7 +263,6 @@ final class PCCFullPipeline {
             // all semantic interpretation and cleanup reasoning.
             let observation = try? PDFTextExtractor().inspectPDF(
                 at: file.url,
-                fileReference: reference,
                 maxExcerptCharacters: Self.maxTextCharacters
             )
             let extracted = observation?.excerpt ?? ""
