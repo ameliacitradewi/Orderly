@@ -11,10 +11,6 @@ let package = Package(
         .target(name: "OrderlyCore", path: "Orderly",
                 exclude: [
                     "AI/ContectBuilder.swift",
-                    "AI/QwenMLXService.swift",
-                    "AI/QwenModelManager.swift",
-                    "AI/QwenModelSession.swift",
-                    "AI/QwenSmokeTest.swift",
                     "AI/Untitled.swift",
                     "App",
                     "Assets.xcassets",
