@@ -7,7 +7,7 @@ nonisolated struct DuplicateGroup: Identifiable, Codable, Hashable, Sendable {
     let detectionMethod: DuplicateDetectionMethod
     /// Legacy compatibility field. pcc-full stores a PCC content-group marker here instead of SHA256.
     let sha256: String
-    /// Nil when any modification date is unavailable; never guess which copy is newest.
+    /// Preferred retained copy. Image duplicate groups choose the highest pixel resolution; other groups use their configured deterministic keeper rule.
     let keeperID: UUID?
 }
 
