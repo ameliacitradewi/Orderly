@@ -163,16 +163,18 @@ struct AffectedFilesView: View {
 
                 Spacer()
 
-                Text(
-                    ByteCountFormatter.string(
-                        fromByteCount: file.size,
-                        countStyle: .file
+                if file.size > 0 || file.modifiedAt != nil {
+                    Text(
+                        ByteCountFormatter.string(
+                            fromByteCount: file.size,
+                            countStyle: .file
+                        )
                     )
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    OrderlyTheme.secondaryText
-                )
+                    .font(.caption)
+                    .foregroundStyle(
+                        OrderlyTheme.secondaryText
+                    )
+                }
             }
         }
         .toggleStyle(.checkbox)
@@ -192,16 +194,22 @@ struct AffectedFilesView: View {
                     "\(selectedFiles.count) files selected"
                 )
 
-                Text(
-                    ByteCountFormatter.string(
-                        fromByteCount: selectedSize,
-                        countStyle: .file
+                if selectedFiles.contains(where: { $0.size > 0 || $0.modifiedAt != nil }) {
+                    Text(
+                        ByteCountFormatter.string(
+                            fromByteCount: selectedSize,
+                            countStyle: .file
+                        )
                     )
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    OrderlyTheme.secondaryText
-                )
+                    .font(.caption)
+                    .foregroundStyle(
+                        OrderlyTheme.secondaryText
+                    )
+                } else {
+                    Text("Local size metadata not collected")
+                        .font(.caption)
+                        .foregroundStyle(OrderlyTheme.secondaryText)
+                }
             }
 
             Spacer()
