@@ -1,14 +1,20 @@
 import Foundation
 import PDFKit
 
-struct PDFTextExtractor: ContentInspectionService {
+struct PDFTextObservation: Sendable, Equatable {
+    let pageCount: Int
+    let extractedCharacterCount: Int
+    let excerpt: String
+    let truncated: Bool
+}
+
+struct PDFTextExtractor {
     func inspectPDF(
         at url: URL,
-        fileReference: String,
         maxExcerptCharacters: Int
-    ) throws -> ContentObservation {
+    ) throws -> PDFTextObservation {
         guard let document = PDFDocument(url: url) else {
-            throw ContentInspectionError.cannotOpenPDF
+            throw PDFTextExtractorError.cannotOpenPDF
         }
 
         var extracted = ""
@@ -16,15 +22,17 @@ struct PDFTextExtractor: ContentInspectionService {
         var totalCharacters = 0
 
         for index in 0..<document.pageCount {
-            guard let text = document.page(at: index)?.string else { continue }
+            guard let text = document.page(at: index)?.string else {
+                continue
+            }
+
             totalCharacters += text.count
 
             if extracted.count < maxExcerptCharacters {
-                let separator = extracted.isEmpty ? "" : "\n"
-                let remainingBeforeSeparator = maxExcerptCharacters - extracted.count
-                if !separator.isEmpty && remainingBeforeSeparator > 0 {
-                    extracted.append(separator)
+                if !extracted.isEmpty && extracted.count < maxExcerptCharacters {
+                    extracted.append("\n")
                 }
+
                 let remaining = maxExcerptCharacters - extracted.count
                 if remaining > 0 {
                     extracted.append(contentsOf: text.prefix(remaining))
@@ -32,13 +40,19 @@ struct PDFTextExtractor: ContentInspectionService {
             }
         }
 
-        return ContentObservation(
-            fileReference: fileReference,
-            contentType: "application/pdf",
+        return PDFTextObservation(
             pageCount: document.pageCount,
             extractedCharacterCount: totalCharacters,
             excerpt: extracted,
             truncated: totalCharacters > extracted.count
         )
+    }
+}
+
+enum PDFTextExtractorError: LocalizedError {
+    case cannotOpenPDF
+
+    var errorDescription: String? {
+        "The PDF could not be opened for content inspection."
     }
 }
