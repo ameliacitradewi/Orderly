@@ -6,7 +6,7 @@ import MLXVLM
 import Tokenizers
 
 /// Shared, serialized loader for the visual specialist. Orderly deliberately keeps
-/// this separate from QwenModelManager so the text agent and VLM have independent
+/// this separate from the PCC Foundation Model service so the text agent and VLM have independent
 /// lifetimes and can be benchmarked/replaced independently.
 actor FastVLMModelManager {
     static let shared = FastVLMModelManager()
