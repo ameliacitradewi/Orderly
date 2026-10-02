@@ -161,7 +161,7 @@ struct AgentDecisionReferenceResolver {
             return recovered
         }
 
-        // Qwen sometimes correctly selects a G-only comparison action but copies the
+        // The Foundation Model sometimes correctly selects a G-only comparison action but copies the
         // local F aliases from the image/PDF observations. Canonicalize only when every
         // resulting G reference is already eligible for that exact comparison. An
         // invalid, ambiguous, or uninspected explicit reference is intentionally left
