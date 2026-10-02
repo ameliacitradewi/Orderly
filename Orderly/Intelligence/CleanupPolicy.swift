@@ -53,10 +53,10 @@ nonisolated struct CleanupPolicy: Sendable {
     static func explanation(for file: FileMetadata, files: FileLookup) -> String {
         if file.duplicateGroupID != nil {
             guard let keeperID = file.duplicateKeeperID, let keeper = files.file(withID: keeperID) else {
-                return "SHA256 matches, but a Last Modified date is missing. Keep all copies for review."
+                return "Private Cloud Compute identified matching content, but a Last Modified date is missing. Keep all copies for review."
             }
             let date = keeper.modifiedAt?.formatted(.iso8601) ?? "unknown"
-            return "SHA256 confirms \(file.duplicateCopyCount) identical copies. Keep \(keeper.name) "
+            return "Private Cloud Compute identified \(file.duplicateCopyCount) exact-content copies. Keep \(keeper.name) "
                 + "(\(keeper.url.path)), Last Modified: \(date). Delete the remaining copies to macOS Trash. "
                 + "Equal dates use alphabetical path order."
         }
