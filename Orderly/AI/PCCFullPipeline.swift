@@ -366,9 +366,7 @@ final class PCCFullPipeline {
             let group = DuplicateGroup(
                 id: groupID,
                 files: ordered.map(\.id),
-                fileSize: 0,
-                detectionMethod: .pccVisualContent,
-                sha256: marker,
+                marker: marker,
                 keeperID: keeper.id
             )
             groups.append(group)
@@ -444,9 +442,7 @@ final class PCCFullPipeline {
                 let group = DuplicateGroup(
                     id: groupID,
                     files: members.map(\.id),
-                    fileSize: 0,
-                    detectionMethod: .pccContent,
-                    sha256: marker,
+                    marker: marker,
                     keeperID: keeperID
                 )
                 groups.append(group)
@@ -463,7 +459,7 @@ final class PCCFullPipeline {
             var result = file
             result.duplicateGroupID = membership.group.id
             // This compatibility slot stores a PCC group marker, not a local hash.
-            result.duplicateSHA256 = membership.marker
+            result.duplicateMarker = membership.marker
             result.duplicateKeeperID = membership.group.keeperID
             result.duplicateCopyCount = membership.group.files.count
             return result
@@ -471,8 +467,7 @@ final class PCCFullPipeline {
 
         return DuplicateScan(
             files: tagged,
-            groups: groups,
-            unreadableCount: 0
+            groups: groups
         )
     }
 
