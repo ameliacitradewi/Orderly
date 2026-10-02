@@ -232,7 +232,7 @@ struct AgentContextBuilder {
 
             let localImageAction = availableLocalImages.isEmpty ? "" : """
             inspectImageContent
-            - Inspect exactly one local image using deterministic raster metadata plus bounded FastVLM visual perception structured by the Foundation Model.
+            - Inspect exactly one local image using deterministic raster metadata plus Apple Foundation Models multimodal visual perception.
             - fileReferences must contain exactly one of: \(availableLocalImages.joined(separator: ", ")).
             - Visual semantics do not prove exact duplication or deletion safety.
             """
@@ -248,7 +248,7 @@ struct AgentContextBuilder {
             inspectGlobalImageContent
             - Inspect exactly one already-observed external image G reference.
             - Allowed external image references: \(availableGlobalImages.joined(separator: ", ")).
-            - Uses deterministic image metadata plus bounded FastVLM/Foundation Model semantics.
+            - Uses deterministic image metadata plus Apple Foundation Models multimodal semantics.
             """
 
             let documentComparisonAction = canCompareDocumentContent ? """
