@@ -47,7 +47,7 @@ private enum PCCGeneratedImageDuplicateRelationship: String, Sendable, Equatable
 }
 
 @Generable
-private enum PCCGeneratedPreferredImageCopy: String, Sendable {
+private enum PCCGeneratedPreferredImageCopy: String, Sendable, Equatable {
     case imageA
     case imageB
     case indistinguishable
