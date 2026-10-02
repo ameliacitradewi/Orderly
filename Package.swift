@@ -5,7 +5,7 @@ import PackageDescription
 // to generate responses. The app's macOS 26.5 deployment target is preserved.
 let package = Package(
     name: "OrderlyCore",
-    platforms: [.macOS("26.5")],
+    platforms: [.macOS("27.0")],
     products: [.library(name: "OrderlyCore", targets: ["OrderlyCore"])],
     targets: [
         .target(name: "OrderlyCore", path: "Orderly",
